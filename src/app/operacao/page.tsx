@@ -4,10 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 
 type Driver = { id: string; name: string };
-
-// Aqui a gente normaliza para "plate" no front, independente do backend mandar "placa" ou "plate"
 type Vehicle = { id: string; plate: string; model?: string | null };
-
 type Stop = { id: string; order: number; destination: string; status: string };
 
 type Rota = {
@@ -31,6 +28,14 @@ const STATUS_FLOW: Record<Rota['status'], Array<Rota['status']>> = {
   CANCELADA: [],
 };
 
+const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
+  PLANEJADA: { bg: '#dbeafe', color: '#1e40af' },
+  ATRIBUIDA: { bg: '#fef3c7', color: '#92400e' },
+  EM_ROTA: { bg: '#d1fae5', color: '#065f46' },
+  CONCLUIDA: { bg: '#d1fae5', color: '#065f46' },
+  CANCELADA: { bg: '#fee2e2', color: '#991b1b' },
+};
+
 function pickArray(j: any): any[] {
   if (Array.isArray(j)) return j;
   if (Array.isArray(j?.items)) return j.items;
@@ -39,6 +44,46 @@ function pickArray(j: any): any[] {
   if (Array.isArray(j?.rotas)) return j.rotas;
   return [];
 }
+
+const card: React.CSSProperties = {
+  background: '#ffffff',
+  border: '1px solid #e2e8f0',
+  borderRadius: 12,
+  padding: 20,
+  boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+};
+
+const selectStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '8px 12px',
+  borderRadius: 8,
+  border: '1px solid #d1d5db',
+  background: '#fff',
+  color: '#1e293b',
+  fontSize: 14,
+};
+
+const btnPrimary: React.CSSProperties = {
+  padding: '8px 16px',
+  borderRadius: 8,
+  background: '#1A4A1A',
+  color: '#fff',
+  border: 'none',
+  fontWeight: 700,
+  fontSize: 13,
+  cursor: 'pointer',
+};
+
+const btnOutline: React.CSSProperties = {
+  padding: '6px 14px',
+  borderRadius: 8,
+  background: '#f8fafc',
+  color: '#1A4A1A',
+  border: '1px solid #d1d5db',
+  fontWeight: 600,
+  fontSize: 13,
+  cursor: 'pointer',
+};
 
 export default function OperacaoPage() {
   const [rotas, setRotas] = useState<Rota[]>([]);
@@ -70,20 +115,14 @@ export default function OperacaoPage() {
       if (!r2.ok) throw new Error(driversJ?.error || 'Falha ao carregar motoristas');
       if (!r3.ok) throw new Error(vehiclesJ?.error || 'Falha ao carregar veículos');
 
-      // ✅ corrige: rotas.map is not a function
       const rotasArr = pickArray(rotasJ) as any[];
       const driversArr = pickArray(driversJ) as any[];
       const vehiclesArr = pickArray(vehiclesJ) as any[];
 
-      // Normaliza drivers
       const drv: Driver[] = driversArr
-        .map((d) => ({
-          id: String(d?.id || ''),
-          name: String(d?.name || d?.nome || ''),
-        }))
+        .map((d) => ({ id: String(d?.id || ''), name: String(d?.name || d?.nome || '') }))
         .filter((d) => d.id && d.name);
 
-      // Normaliza vehicles (aceita placa/plate)
       const veh: Vehicle[] = vehiclesArr
         .map((v) => ({
           id: String(v?.id || ''),
@@ -92,7 +131,6 @@ export default function OperacaoPage() {
         }))
         .filter((v) => v.id && v.plate);
 
-      // Normaliza rotas (garante stops array)
       const rts: Rota[] = rotasArr
         .map((r) => ({
           id: String(r?.id || ''),
@@ -106,11 +144,7 @@ export default function OperacaoPage() {
             ? { id: String(r.driver.id || ''), name: String(r.driver.name || r.driver.nome || '') }
             : null,
           vehicle: r?.vehicle
-            ? {
-                id: String(r.vehicle.id || ''),
-                plate: String(r.vehicle.plate || r.vehicle.placa || '').toUpperCase(),
-                model: r.vehicle.model ?? null,
-              }
+            ? { id: String(r.vehicle.id || ''), plate: String(r.vehicle.plate || r.vehicle.placa || '').toUpperCase(), model: r.vehicle.model ?? null }
             : null,
           stops: Array.isArray(r?.stops) ? r.stops : Array.isArray(r?.paradas) ? r.paradas : [],
         }))
@@ -133,14 +167,9 @@ export default function OperacaoPage() {
     void carregarTudo();
   }, []);
 
-  // (opcional) mapas úteis para depurar
-  const driverMap = useMemo(() => Object.fromEntries(drivers.map((d) => [d.id, d.name])), [drivers]);
-  const vehicleMap = useMemo(() => Object.fromEntries(vehicles.map((v) => [v.id, v.plate])), [vehicles]);
-
   async function atribuir(rotaId: string, driverId?: string, vehicleId?: string) {
     setErro(null);
     setOk(null);
-
     const payload: any = {};
     if (driverId) payload.driverId = driverId;
     if (vehicleId) payload.vehicleId = vehicleId;
@@ -150,163 +179,187 @@ export default function OperacaoPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      setErro(j?.error || 'Falha ao atribuir');
-      return;
-    }
-
-    setOk('Atribuição salva.');
+    if (!r.ok) { setErro(j?.error || 'Falha ao atribuir'); return; }
+    setOk('Atribuicao salva.');
     await carregarTudo();
   }
 
   async function mudarStatus(rotaId: string, next: Rota['status']) {
     setErro(null);
     setOk(null);
-
     const r = await fetch(`/api/rotas/${rotaId}/status`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: next }),
     });
-
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      setErro(j?.error || 'Falha ao mudar status');
-      return;
-    }
-
+    if (!r.ok) { setErro(j?.error || 'Falha ao mudar status'); return; }
     setOk('Status atualizado.');
     await carregarTudo();
   }
 
   return (
-    <main className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Operação — Atribuição e Status</h1>
-        <button onClick={carregarTudo} disabled={loading} className="px-3 py-2 rounded border">
-          {loading ? 'Atualizando…' : 'Atualizar'}
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 900, color: '#1A4A1A', margin: 0 }}>
+          Operacao — Atribuicao e Status
+        </h1>
+        <button onClick={carregarTudo} disabled={loading} style={btnPrimary}>
+          {loading ? 'Atualizando...' : 'Atualizar'}
         </button>
       </div>
 
-      {erro && <div className="text-red-600 text-sm">{erro}</div>}
-      {ok && <div className="text-green-700 text-sm">{ok}</div>}
+      {erro && (
+        <div style={{ background: '#fee2e2', color: '#991b1b', padding: '10px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14 }}>
+          {erro}
+        </div>
+      )}
+      {ok && (
+        <div style={{ background: '#d1fae5', color: '#065f46', padding: '10px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14 }}>
+          {ok}
+        </div>
+      )}
 
-      <div className="space-y-4">
-        {Array.isArray(rotas) &&
-          rotas.map((r) => {
-            const options = STATUS_FLOW[r.status] || [];
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {Array.isArray(rotas) && rotas.map((r) => {
+          const options = STATUS_FLOW[r.status] || [];
+          const sc = STATUS_COLORS[r.status] || { bg: '#f1f5f9', color: '#64748b' };
 
-            return (
-              <div key={r.id} className="border rounded p-4">
-                <div className="flex flex-wrap gap-3 text-sm text-gray-600">
-                  <div>
-                    <b>Data:</b> {new Date(r.createdAt).toLocaleString()}
-                  </div>
-                  <div>
-                    <b>Status:</b> {r.status}
-                  </div>
-                  <div>
+          return (
+            <div key={r.id} style={card}>
+              {/* Header */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', marginBottom: 16 }}>
+                <span style={{
+                  background: sc.bg, color: sc.color,
+                  padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, letterSpacing: 0.5,
+                }}>
+                  {r.status}
+                </span>
+                <span style={{ fontSize: 13, color: '#64748b' }}>
+                  {new Date(r.createdAt).toLocaleDateString('pt-BR')} {new Date(r.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+                {r.origin && (
+                  <span style={{ fontSize: 13, color: '#1e293b' }}>
                     <b>Origem:</b> {r.origin}
-                  </div>
-                  <div>
-                    <b>Total km:</b> {r.totalKm}
-                  </div>
-                  <div>
-                    <b>Paradas:</b> {Array.isArray(r.stops) ? r.stops.length : 0}
-                  </div>
+                  </span>
+                )}
+                <span style={{ fontSize: 13, color: '#1e293b' }}>
+                  <b>Km:</b> {r.totalKm}
+                </span>
+                <span style={{ fontSize: 13, color: '#1e293b' }}>
+                  <b>Paradas:</b> {Array.isArray(r.stops) ? r.stops.length : 0}
+                </span>
+              </div>
+
+              {/* Atribuicao */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 16 }}>
+                <div>
+                  <label style={{ fontSize: 12, color: '#64748b', fontWeight: 600, marginBottom: 4, display: 'block' }}>Motorista</label>
+                  <select
+                    style={selectStyle}
+                    value={r.driverId ?? ''}
+                    onChange={(e) => atribuir(r.id, e.target.value || undefined, r.vehicleId ?? undefined)}
+                  >
+                    <option value="">— Selecionar —</option>
+                    {drivers.map((d) => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
                 </div>
 
-                <div className="mt-3 grid md:grid-cols-3 gap-3 items-end">
-                  <label className="block">
-                    <div className="text-sm text-gray-600">Motorista</div>
-                    <select
-                      className="border p-2 rounded w-full"
-                      value={r.driverId ?? ''}
-                      onChange={(e) => atribuir(r.id, e.target.value || undefined, r.vehicleId ?? undefined)}
-                    >
-                      <option value="">— Selecionar —</option>
-                      {drivers.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="block">
-                    <div className="text-sm text-gray-600">Veículo</div>
-                    <select
-                      className="border p-2 rounded w-full"
-                      value={r.vehicleId ?? ''}
-                      onChange={(e) => atribuir(r.id, r.driverId ?? undefined, e.target.value || undefined)}
-                    >
-                      <option value="">— Selecionar —</option>
-                      {vehicles.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.plate}
-                          {v.model ? ` — ${v.model}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <div className="flex gap-2">
-                    {options.length === 0 ? (
-                      <span className="text-xs text-gray-500 self-center">Sem transições disponíveis</span>
-                    ) : (
-                      options.map((next) => (
-                        <button key={next} onClick={() => mudarStatus(r.id, next)} className="px-3 py-2 rounded border">
-                          Mudar para {next}
-                        </button>
-                      ))
-                    )}
-                  </div>
+                <div>
+                  <label style={{ fontSize: 12, color: '#64748b', fontWeight: 600, marginBottom: 4, display: 'block' }}>Veiculo</label>
+                  <select
+                    style={selectStyle}
+                    value={r.vehicleId ?? ''}
+                    onChange={(e) => atribuir(r.id, r.driverId ?? undefined, e.target.value || undefined)}
+                  >
+                    <option value="">— Selecionar —</option>
+                    {vehicles.map((v) => (
+                      <option key={v.id} value={v.id}>{v.plate}{v.model ? ` — ${v.model}` : ''}</option>
+                    ))}
+                  </select>
                 </div>
 
-                <div className="mt-3 flex gap-2 flex-wrap">
-                  <Link href={`/rotas/${r.id}`} className="px-3 py-1 rounded bg-sky-100 text-sky-800 text-sm font-semibold hover:bg-sky-200">
-                    Ver rota
-                  </Link>
-                  <Link href={`/scan?rotaId=${r.id}`} className="px-3 py-1 rounded bg-green-100 text-green-800 text-sm font-semibold hover:bg-green-200">
-                    Scan
-                  </Link>
-                  <Link href={`/api/rotas/${r.id}/romaneio`} target="_blank" className="px-3 py-1 rounded bg-purple-100 text-purple-800 text-sm font-semibold hover:bg-purple-200">
-                    Romaneio
-                  </Link>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                  {options.length === 0 ? (
+                    <span style={{ fontSize: 12, color: '#64748b' }}>Sem transicoes</span>
+                  ) : (
+                    options.map((next) => (
+                      <button
+                        key={next}
+                        onClick={() => mudarStatus(r.id, next)}
+                        style={{
+                          ...btnOutline,
+                          ...(next === 'CANCELADA' ? { color: '#dc2626', borderColor: '#fca5a5' } : {}),
+                        }}
+                      >
+                        {next}
+                      </button>
+                    ))
+                  )}
                 </div>
+              </div>
 
-                <details className="mt-3">
-                  <summary className="cursor-pointer text-sm text-gray-700">Paradas (status)</summary>
-                  <table className="w-full text-sm border mt-2">
+              {/* Links */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <Link href={`/rotas/${r.id}`} style={{
+                  padding: '6px 14px', borderRadius: 8, background: '#dbeafe', color: '#1e40af',
+                  fontSize: 13, fontWeight: 600, textDecoration: 'none',
+                }}>
+                  Ver rota
+                </Link>
+                <Link href={`/scan?rotaId=${r.id}`} style={{
+                  padding: '6px 14px', borderRadius: 8, background: '#d1fae5', color: '#065f46',
+                  fontSize: 13, fontWeight: 600, textDecoration: 'none',
+                }}>
+                  Scan
+                </Link>
+                <Link href={`/api/rotas/${r.id}/romaneio`} target="_blank" style={{
+                  padding: '6px 14px', borderRadius: 8, background: '#f3e8ff', color: '#6b21a8',
+                  fontSize: 13, fontWeight: 600, textDecoration: 'none',
+                }}>
+                  Romaneio
+                </Link>
+              </div>
+
+              {/* Paradas expandivel */}
+              {Array.isArray(r.stops) && r.stops.length > 0 && (
+                <details style={{ marginTop: 12 }}>
+                  <summary style={{ cursor: 'pointer', fontSize: 13, color: '#64748b', fontWeight: 600 }}>
+                    Paradas ({r.stops.length})
+                  </summary>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8, fontSize: 13 }}>
                     <thead>
-                      <tr className="bg-gray-50">
-                        <th className="text-left p-2 border">#</th>
-                        <th className="text-left p-2 border">Destino</th>
-                        <th className="text-left p-2 border">Status</th>
+                      <tr style={{ background: '#f8fafc' }}>
+                        <th style={{ textAlign: 'left', padding: '6px 10px', borderBottom: '1px solid #e2e8f0' }}>#</th>
+                        <th style={{ textAlign: 'left', padding: '6px 10px', borderBottom: '1px solid #e2e8f0' }}>Destino</th>
+                        <th style={{ textAlign: 'left', padding: '6px 10px', borderBottom: '1px solid #e2e8f0' }}>Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {(Array.isArray(r.stops) ? r.stops : []).map((s: any) => (
-                        <tr key={s.id} className="border-t">
-                          <td className="p-2 border">{s.order}</td>
-                          <td className="p-2 border">{s.destination}</td>
-                          <td className="p-2 border">{s.status}</td>
+                      {r.stops.map((s: any) => (
+                        <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '6px 10px' }}>{s.order}</td>
+                          <td style={{ padding: '6px 10px' }}>{s.destination}</td>
+                          <td style={{ padding: '6px 10px' }}>{s.status}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </details>
+              )}
+            </div>
+          );
+        })}
 
-              </div>
-            );
-          })}
-
-        {(!Array.isArray(rotas) || rotas.length === 0) && (
-          <div className="text-sm text-gray-600">Nenhuma rota cadastrada.</div>
+        {(!Array.isArray(rotas) || rotas.length === 0) && !loading && (
+          <div style={{ ...card, textAlign: 'center', color: '#64748b', padding: 40 }}>
+            Nenhuma rota cadastrada.
+          </div>
         )}
       </div>
-    </main>
+    </div>
   );
 }
