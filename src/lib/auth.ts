@@ -1,7 +1,5 @@
 import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import bcrypt from 'bcryptjs';
-import { prisma } from '@/lib/prisma';
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -14,21 +12,30 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
-        });
+        try {
+          // Dynamic imports to avoid edge runtime issues
+          const bcrypt = (await import('bcryptjs')).default;
+          const { prisma } = await import('@/lib/prisma');
 
-        if (!user) return null;
+          const user = await prisma.user.findUnique({
+            where: { email: credentials.email },
+          });
 
-        const valid = await bcrypt.compare(credentials.password, user.password);
-        if (!valid) return null;
+          if (!user) return null;
 
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-        };
+          const valid = await bcrypt.compare(credentials.password, user.password);
+          if (!valid) return null;
+
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+          };
+        } catch (error) {
+          console.error('Auth error:', error);
+          return null;
+        }
       },
     }),
   ],
@@ -51,5 +58,5 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
-  secret: process.env.NEXTAUTH_SECRET || 'br-transportes-secret-key-change-in-production',
+  secret: process.env.NEXTAUTH_SECRET,
 };
