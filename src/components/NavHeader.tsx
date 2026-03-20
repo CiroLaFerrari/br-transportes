@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useSession, signOut } from 'next-auth/react';
 
 const navLinks = [
   { href: '/', label: 'Home' },
@@ -25,6 +26,10 @@ const cadLinks = [
 
 export default function NavHeader() {
   const pathname = usePathname();
+  const { data: session } = useSession();
+
+  // Nao mostrar header na pagina de login
+  if (pathname === '/login') return null;
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
@@ -110,6 +115,32 @@ export default function NavHeader() {
               {l.label}
             </Link>
           ))}
+          {session?.user && (
+            <>
+              <span style={{ color: 'rgba(255,255,255,0.2)', margin: '0 4px', fontSize: 16 }}>|</span>
+              <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, padding: '6px 4px' }}>
+                {session.user.name || session.user.email}
+              </span>
+              <button
+                onClick={() => signOut({ callbackUrl: '/login' })}
+                style={{
+                  color: '#fca5a5',
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  padding: '6px 8px',
+                  borderRadius: 6,
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.15)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                Sair
+              </button>
+            </>
+          )}
         </nav>
       </div>
     </header>
