@@ -1,0 +1,535 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Cliente {
+  id               String   @id @default(cuid())
+  razao            String
+  cnpj             String?  @unique
+  uf               String
+  cidade           String
+  percentualFrete  Float?
+  endereco         String?
+  localEntrega     String?
+  particularidades String?
+  ajudantes        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  coletas          Coleta[]
+}
+
+model Motorista {
+  id              String         @id @default(cuid())
+  nome            String
+  documento       String?
+  disponibilidade Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  Planejamento    Planejamento[]
+  rotas           Rota[]
+}
+
+model Veiculo {
+  id           String         @id @default(cuid())
+  placa        String         @unique
+  capacidadeKg Int
+  capacidadeM3 Float
+  compCm       Int
+  largCm       Int
+  altCm        Int
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  Planejamento Planejamento[]
+  rotas        Rota[]
+}
+
+model Produto {
+  id             String         @id @default(uuid())
+  code           String         @unique @map("codigo")
+  tipoCodigo     TipoCodigoItem @default(FORNECEDOR)
+  descricao      String
+  comprimentoCm  Float?         @map("compCm")
+  larguraCm      Float?         @map("largCm")
+  alturaCm       Float?         @map("altCm")
+  fragil         Boolean        @default(false)
+  empilhavel     Boolean        @default(true)
+  posicao        PosicaoCarga?
+  desmontavel    Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt @map("updatedAt")
+  areaM2         Float?
+  embalado       Boolean        @default(false)
+  tipoEmbalagem  TipoEmbalagem?
+  volumeM3       Float?
+  pesoKg         Float?
+  componentes    Componente[]
+  itemsColetados ItemColetado[] @relation("ProdutoToItemColetado")
+}
+
+model Componente {
+  id            String       @id @default(uuid())
+  produtoId     String
+  nome          String       @map("descricao")
+  pesoKg        Float?
+  comprimentoCm Float?       @map("compCm")
+  larguraCm     Float?       @map("largCm")
+  alturaCm      Float?       @map("altCm")
+  createdAt     DateTime     @default(now())
+  observacao    String?
+  quantidade    Int          @default(1)
+  areaM2        Float?
+  volumeM3      Float?
+  volumes       ItemVolume[]
+  produto       Produto      @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  codigo        String
+
+  @@unique([produtoId, codigo])
+  @@index([produtoId])
+}
+
+model Coleta {
+  id          String       @id @default(cuid())
+  clienteId   String
+  nf          String
+  cidade      String
+  uf          String
+  valorFrete  Float?
+  pesoTotalKg Float?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @default(now()) @updatedAt
+  Cliente     Cliente      @relation(fields: [clienteId], references: [id])
+  itens       ItemColetado[]
+  paradas     Parada[]     @relation("ColetaToParada")
+  status      ColetaStatus @default(EM_PATIO)
+
+  prazoEntrega   DateTime?
+  urgencia       UrgenciaColeta @default(NORMAL)
+
+  entradaPatioAt DateTime  @default(now())
+  embarqueAt     DateTime?
+  fimPatioAt     DateTime?
+
+  minutaId       String?
+  coletador      String?
+  pedido         String?
+
+  @@index([minutaId])
+}
+
+model ItemColetado {
+  id         String       @id @default(cuid())
+  coletaId   String
+  produtoId  String
+  quantidade Int
+  etiqueta   String?
+  volumes    ItemVolume[]
+  Coleta     Coleta       @relation(fields: [coletaId], references: [id], onDelete: Cascade)
+  Produto    Produto      @relation("ProdutoToItemColetado", fields: [produtoId], references: [id])
+}
+
+model ItemVolume {
+  id             String  @id @default(cuid())
+  itemColetadoId String
+  componenteId   String?
+  etiqueta       String  @unique
+
+  createdAt DateTime     @default(now())
+  scannedAt DateTime?
+  status    ColetaStatus @default(EM_PATIO)
+
+  itemColetado ItemColetado @relation(fields: [itemColetadoId], references: [id], onDelete: Cascade)
+  componente   Componente?  @relation(fields: [componenteId], references: [id])
+
+  @@index([itemColetadoId])
+  @@index([etiqueta])
+}
+
+model Rota {
+  id             String     @id @default(cuid())
+  dataRota       DateTime
+  motoristaId    String?
+  veiculoId      String?
+  kmTotal        Int?
+  freteTotal     Float?
+  freteMotorista Float?
+  status         RotaStatus @default(PLANEJADA)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  paradas        Parada[]   @relation("RotaToParada")
+  motorista      Motorista? @relation(fields: [motoristaId], references: [id])
+  veiculo        Veiculo?   @relation(fields: [veiculoId], references: [id])
+}
+
+model Parada {
+  id             String           @id @default(cuid())
+  rotaId         String?
+  ordem          Int
+  coletaId       String
+  createdAt      DateTime         @default(now())
+  durMinTrecho   Int?
+  kmTrecho       Float?
+  label          String
+  lat            Float
+  lon            Float
+  planejamentoId String?
+  checkinAt      DateTime?
+  checkoutAt     DateTime?
+  obsStatus      String?
+  statusExec     ParadaExecStatus @default(PENDENTE)
+
+  // Comprovante de entrega (POD)
+  recebedorNome  String?
+  recebedorDoc   String?
+  obsEntrega     String?
+
+  Coleta         Coleta           @relation("ColetaToParada", fields: [coletaId], references: [id])
+  Planejamento   Planejamento?    @relation("PlanejamentoToParada", fields: [planejamentoId], references: [id], onDelete: Cascade)
+  Rota           Rota?            @relation("RotaToParada", fields: [rotaId], references: [id], onDelete: Cascade)
+
+  @@index([planejamentoId, ordem])
+  @@index([rotaId, ordem])
+  @@index([statusExec])
+}
+
+model RoutePlan {
+  id          String      @id @default(uuid())
+  createdAt   DateTime    @default(now())
+  origin      String
+  totalKm     Float
+  driverId    String?
+  finishedAt  DateTime?
+  startedAt   DateTime?
+  status      RouteStatus @default(PLANEJADA)
+  vehicleId   String?
+  planEndAt   DateTime?
+  planStartAt DateTime?
+  driver      Driver?     @relation(fields: [driverId], references: [id])
+  vehicle     Vehicle?    @relation(fields: [vehicleId], references: [id])
+  stops       StopPlan[]
+
+  @@index([status])
+  @@index([driverId])
+  @@index([vehicleId])
+  @@index([driverId, planStartAt, planEndAt])
+  @@index([vehicleId, planStartAt, planEndAt])
+}
+
+model StopPlan {
+  id          String     @id @default(uuid())
+  routePlanId String
+  order       Int
+  destination String
+  km          Float
+  durMin      Int
+  doneAt      DateTime?
+  note        String?
+  status      StopStatus @default(PENDENTE)
+  route       RoutePlan  @relation(fields: [routePlanId], references: [id], onDelete: Cascade)
+
+  @@index([routePlanId, order])
+  @@index([status])
+}
+
+model ScanEvent {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  etiqueta  String
+  status    String
+  note      String?
+}
+
+model Driver {
+  id        String      @id @default(uuid())
+  createdAt DateTime    @default(now())
+  name      String
+  phone     String?
+  routes    RoutePlan[]
+}
+
+model Vehicle {
+  id         String      @id @default(uuid())
+  createdAt  DateTime    @default(now())
+  plate      String      @unique
+  model      String?
+  capacity   Int?
+  capacityKg Float?
+  capacityM3 Float?
+  routes     RoutePlan[]
+}
+
+model GeoCache {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  lastHitAt DateTime @default(now())
+  hits      Int      @default(0)
+  query     String
+  norm      String   @unique
+  lon       Float
+  lat       Float
+}
+
+model DirCache {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  lastHitAt DateTime @default(now())
+  hits      Int      @default(0)
+  aNorm     String
+  bNorm     String
+  km        Float
+  durMin    Int
+  geojson   Json
+
+  @@unique([aNorm, bNorm])
+}
+
+model PlanStore {
+  id           String     @id @default(uuid())
+  createdAt    DateTime   @default(now())
+  name         String
+  payload      Json
+  driverName   String?
+  notes        String?
+  status       PlanStatus @default(DRAFT)
+  vehiclePlate String?
+  driverId     String?
+  planEndAt    DateTime?
+  planStartAt  DateTime?
+  vehicleId    String?
+
+  @@index([driverId, planStartAt, planEndAt])
+  @@index([vehicleId, planStartAt, planEndAt])
+}
+
+model Planejamento {
+  id           String     @id @default(cuid())
+  name         String
+  payload      Json
+  status       PlanStatus @default(DRAFT)
+  vehiclePlate String?
+  driverName   String?
+  notes        String?
+  motoristaId  String?    @db.VarChar(191)
+  veiculoId    String?    @db.VarChar(191)
+  planStartAt  DateTime?
+  planEndAt    DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  paradas      Parada[]   @relation("PlanejamentoToParada")
+  Motorista    Motorista? @relation(fields: [motoristaId], references: [id])
+  Veiculo      Veiculo?   @relation(fields: [veiculoId], references: [id])
+
+  @@index([motoristaId])
+  @@index([veiculoId])
+  @@index([planStartAt, planEndAt])
+}
+
+enum ColetaStatus {
+  EM_PATIO
+  CARREGADA
+  EM_TRANSITO
+  ENTREGUE
+}
+
+enum RotaStatus {
+  PLANEJADA
+  EM_CARREGAMENTO
+  EM_ROTA
+  CONCLUIDA
+}
+
+enum RouteStatus {
+  PLANEJADA
+  ATRIBUIDA
+  EM_ROTA
+  CONCLUIDA
+  CANCELADA
+}
+
+enum StopStatus {
+  PENDENTE
+  EM_ATENDIMENTO
+  ENTREGUE
+}
+
+enum ParadaStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+}
+
+enum PlanStatus {
+  DRAFT
+  PLANNED
+  IN_TRANSIT
+  DONE
+  CANCELED
+}
+
+enum ParadaExecStatus {
+  PENDENTE
+  EM_ATENDIMENTO
+  ENTREGUE
+  FALHA
+}
+
+enum UrgenciaColeta {
+  NORMAL
+  ALTA
+  URGENTE
+}
+
+enum TipoCodigoItem {
+  FORNECEDOR
+  INTERNO
+}
+
+enum TipoEmbalagem {
+  CAIXA_MADEIRA
+  CAIXA_PAPELAO
+  AMARRADO
+  OUTROS
+}
+
+enum PosicaoCarga {
+  FRONTAL
+  INDIFERENTE
+}
+
+// =====================
+// Minuta de Conferência
+// =====================
+
+model MinutaConferencia {
+  id          String   @id @default(cuid())
+  numero      String?
+  nfNumero    String
+  cliente     String
+  cidade      String
+  uf          String
+  motorista   String?
+  pedido      String?
+  coletador   String?
+  dataColeta  DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  itens       MinutaItem[]
+  checklist   CarregamentoChecklist?
+
+  @@index([nfNumero])
+  @@index([cliente])
+  @@index([cidade, uf])
+}
+
+model MinutaItem {
+  id               String   @id @default(cuid())
+  minutaId         String
+
+  produtoId        String?
+  produtoCode      String
+  produtoDescricao String
+
+  quantidade       Int      @default(1)
+  pesoKg           Float?
+  alturaCm         Float?
+  larguraCm        Float?
+  comprimentoCm    Float?
+  areaM2           Float?
+  volumeM3         Float?
+
+  desmontavel      Boolean  @default(false)
+  observacao       String?
+
+  createdAt        DateTime @default(now())
+
+  minuta           MinutaConferencia @relation(fields: [minutaId], references: [id], onDelete: Cascade)
+  volumes          MinutaVolume[]
+
+  @@index([minutaId])
+  @@index([produtoCode])
+}
+
+model MinutaVolume {
+  id            String   @id @default(cuid())
+  minutaItemId  String
+
+  etiqueta      String
+  tipo          String
+  codigo        String
+  descricao     String
+
+  pesoKg        Float?
+  alturaCm      Float?
+  larguraCm     Float?
+  comprimentoCm Float?
+  areaM2        Float?
+  volumeM3      Float?
+
+  createdAt     DateTime @default(now())
+
+  minutaItem    MinutaItem @relation(fields: [minutaItemId], references: [id], onDelete: Cascade)
+  checks        CarregamentoChecklistItem[]
+
+  @@index([minutaItemId])
+  @@index([etiqueta])
+}
+
+// =====================
+// Checklist de Carregamento
+// =====================
+
+model CarregamentoChecklist {
+  id          String                 @id @default(cuid())
+  minutaId    String                 @unique
+  status      ChecklistStatus        @default(ABERTO)
+  conferente  String?
+  startedAt   DateTime               @default(now())
+  finishedAt  DateTime?
+  notes       String?
+
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  minuta      MinutaConferencia      @relation(fields: [minutaId], references: [id], onDelete: Cascade)
+  itens       CarregamentoChecklistItem[]
+
+  @@index([status])
+  @@index([minutaId])
+}
+
+model CarregamentoChecklistItem {
+  id           String             @id @default(cuid())
+  checklistId  String
+  volumeId     String
+  status       ChecklistItemStatus @default(PENDENTE)
+  note         String?
+
+  checkedAt    DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  checklist    CarregamentoChecklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  volume       MinutaVolume          @relation(fields: [volumeId], references: [id], onDelete: Cascade)
+
+  @@unique([checklistId, volumeId])
+  @@index([checklistId])
+  @@index([volumeId])
+  @@index([status])
+}
+
+enum ChecklistStatus {
+  ABERTO
+  FINALIZADO
+}
+
+enum ChecklistItemStatus {
+  PENDENTE
+  OK
+  FALHA
+}
