@@ -379,6 +379,20 @@ export default function MinutasPage() {
               Imprimir Minuta
             </button>
             <button
+              onClick={() => window.open(`/api/minutas/${editingId}/etiquetas`, '_blank')}
+              style={{
+                padding: '8px 12px',
+                borderRadius: 8,
+                background: '#8b5cf6',
+                color: '#fff',
+                border: 'none',
+                fontWeight: 900,
+                cursor: 'pointer',
+              }}
+            >
+              Imprimir Etiquetas
+            </button>
+            <button
               onClick={() => window.open(`/api/minutas/${editingId}/declaracao`, '_blank')}
               style={{
                 padding: '8px 12px',
