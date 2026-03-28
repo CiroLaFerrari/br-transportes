@@ -19,6 +19,11 @@ export async function GET(req: NextRequest) {
         compCm: true,
         largCm: true,
         altCm: true,
+        numEixos: true,
+        licenciamentoUrl: true,
+        licenciamentoVencimento: true,
+        documentosUrl: true,
+        documentosVencimento: true,
         createdAt: true,
       },
     });
@@ -54,8 +59,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'compCm, largCm e altCm (Int) são obrigatórios' }, { status: 400 });
     }
 
+    // optional new fields
+    const numEixosRaw = body?.numEixos;
+    const numEixos = numEixosRaw !== undefined && numEixosRaw !== null && numEixosRaw !== ''
+      ? Number(numEixosRaw) : undefined;
+    if (numEixos !== undefined && !Number.isInteger(numEixos)) {
+      return NextResponse.json({ error: 'numEixos deve ser inteiro' }, { status: 400 });
+    }
+
+    const licenciamentoUrl = body?.licenciamentoUrl ? String(body.licenciamentoUrl).trim() : undefined;
+    const documentosUrl = body?.documentosUrl ? String(body.documentosUrl).trim() : undefined;
+
+    const licenciamentoVencimento = body?.licenciamentoVencimento
+      ? new Date(body.licenciamentoVencimento) : undefined;
+    const documentosVencimento = body?.documentosVencimento
+      ? new Date(body.documentosVencimento) : undefined;
+
+    if (licenciamentoVencimento && isNaN(licenciamentoVencimento.getTime())) {
+      return NextResponse.json({ error: 'licenciamentoVencimento inválido' }, { status: 400 });
+    }
+    if (documentosVencimento && isNaN(documentosVencimento.getTime())) {
+      return NextResponse.json({ error: 'documentosVencimento inválido' }, { status: 400 });
+    }
+
     const created = await prisma.veiculo.create({
-      data: { placa, capacidadeKg, capacidadeM3, compCm, largCm, altCm },
+      data: {
+        placa, capacidadeKg, capacidadeM3, compCm, largCm, altCm,
+        ...(numEixos !== undefined && { numEixos }),
+        ...(licenciamentoUrl && { licenciamentoUrl }),
+        ...(licenciamentoVencimento && { licenciamentoVencimento }),
+        ...(documentosUrl && { documentosUrl }),
+        ...(documentosVencimento && { documentosVencimento }),
+      },
       select: { id: true },
     });
 

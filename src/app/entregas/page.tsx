@@ -3,7 +3,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 
-type ColetaStatus = 'EM_PATIO' | 'CARREGADA' | 'EM_TRANSITO' | 'ENTREGUE';
+type Motorista = { id: string; nome: string };
+type Checkin = {
+  id: string;
+  motoristaId: string;
+  data: string;
+  localizacao: string;
+  observacao: string | null;
+  motorista: { id: string; nome: string };
+};
+
+type ColetaStatus = 'EM_PATIO' | 'EM_CARGA' | 'CARREGADA' | 'EM_TRANSITO' | 'ENTREGUE';
 
 type ColetaRow = {
   id: string;
@@ -49,6 +59,17 @@ export default function EntregasPage() {
   const [acaoMsg, setAcaoMsg] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  // Checkin state
+  const [motoristas, setMotoristas] = useState<Motorista[]>([]);
+  const [checkins, setCheckins] = useState<Checkin[]>([]);
+  const [checkinOpen, setCheckinOpen] = useState(false);
+  const [checkinMotorista, setCheckinMotorista] = useState('');
+  const [checkinLocal, setCheckinLocal] = useState('');
+  const [checkinObs, setCheckinObs] = useState('');
+  const [checkinBusy, setCheckinBusy] = useState(false);
+  const [checkinErr, setCheckinErr] = useState<string | null>(null);
+  const [checkinOk, setCheckinOk] = useState<string | null>(null);
+
   async function load() {
     setLoading(true);
     setErr(null);
@@ -73,8 +94,58 @@ export default function EntregasPage() {
     }
   }
 
+  async function loadCheckins() {
+    try {
+      const [r1, r2] = await Promise.all([
+        fetch('/api/checkins', { cache: 'no-store' }),
+        fetch('/api/motoristas?limit=200', { cache: 'no-store' }),
+      ]);
+      const [checkinsJ, motoristasJ] = await Promise.all([
+        r1.json().catch(() => []),
+        r2.json().catch(() => []),
+      ]);
+      if (r1.ok) setCheckins(Array.isArray(checkinsJ) ? checkinsJ : []);
+      if (r2.ok) {
+        const arr = Array.isArray(motoristasJ) ? motoristasJ : [];
+        setMotoristas(arr.map((m: any) => ({ id: String(m.id), nome: String(m.nome || m.name || '') })));
+      }
+    } catch { /* silent */ }
+  }
+
+  async function submitCheckin() {
+    if (!checkinMotorista || !checkinLocal.trim()) {
+      setCheckinErr('Selecione o motorista e informe a localizacao.');
+      return;
+    }
+    setCheckinBusy(true);
+    setCheckinErr(null);
+    setCheckinOk(null);
+    try {
+      const res = await fetch('/api/checkins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          motoristaId: checkinMotorista,
+          localizacao: checkinLocal.trim(),
+          observacao: checkinObs.trim() || null,
+        }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.error || 'Falha ao registrar checkin');
+      setCheckinOk('Check-in registrado com sucesso.');
+      setCheckinLocal('');
+      setCheckinObs('');
+      await loadCheckins();
+    } catch (e: any) {
+      setCheckinErr(e?.message || 'Falha ao registrar checkin');
+    } finally {
+      setCheckinBusy(false);
+    }
+  }
+
   useEffect(() => {
     void load();
+    void loadCheckins();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -92,17 +163,41 @@ export default function EntregasPage() {
     return { total, aberto, mediaDias };
   }, [list]);
 
+  const checkinRows = useMemo(() => {
+    // Build a map: motoristaId -> latest checkin
+    const latest = new Map<string, Checkin>();
+    for (const c of checkins) {
+      const prev = latest.get(c.motoristaId);
+      if (!prev || new Date(c.data) > new Date(prev.data)) {
+        latest.set(c.motoristaId, c);
+      }
+    }
+    // Build rows for all motoristas
+    return motoristas.map((m) => {
+      const ck = latest.get(m.id);
+      return {
+        motoristaId: m.id,
+        motoristaNome: m.nome,
+        localizacao: ck?.localizacao ?? null,
+        horario: ck?.data ?? null,
+        observacao: ck?.observacao ?? null,
+      };
+    });
+  }, [motoristas, checkins]);
+
   async function acao(
     coletaId: string,
-    action: 'SAIDA_PATIO' | 'EM_TRANSITO' | 'ENTREGUE',
+    action: 'EM_CARGA' | 'SAIDA_PATIO' | 'EM_TRANSITO' | 'ENTREGUE',
     note?: string,
   ) {
     const ok = confirm(
-      action === 'SAIDA_PATIO'
-        ? 'Declarar saída do pátio? (não deve duplicar)'
-        : action === 'EM_TRANSITO'
-          ? 'Marcar como EM_TRANSITO?'
-          : 'Marcar como ENTREGUE?',
+      action === 'EM_CARGA'
+        ? 'Marcar como EM_CARGA (em carregamento)?'
+        : action === 'SAIDA_PATIO'
+          ? 'Declarar saída do pátio? (não deve duplicar)'
+          : action === 'EM_TRANSITO'
+            ? 'Marcar como EM_TRANSITO?'
+            : 'Marcar como ENTREGUE?',
     );
     if (!ok) return;
 
@@ -229,6 +324,7 @@ export default function EntregasPage() {
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <select value={status} onChange={(e) => setStatus(e.target.value as any)} style={select as any}>
             <option value="EM_PATIO">EM_PATIO</option>
+            <option value="EM_CARGA">EM_CARGA</option>
             <option value="CARREGADA">CARREGADA</option>
             <option value="EM_TRANSITO">EM_TRANSITO</option>
             <option value="ENTREGUE">ENTREGUE</option>
@@ -264,6 +360,99 @@ export default function EntregasPage() {
 
         {err && <div style={{ marginTop: 10, color: '#dc2626', fontWeight: 900 }}>{err}</div>}
         {acaoMsg && <div style={{ marginTop: 10, color: '#16a34a', fontWeight: 900 }}>{acaoMsg}</div>}
+      </div>
+
+      {/* Checkin Motoristas Section */}
+      <div style={card}>
+        <div
+          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+          onClick={() => setCheckinOpen(!checkinOpen)}
+        >
+          <span style={{ fontSize: 16, fontWeight: 900, color: '#1A4A1A' }}>
+            {checkinOpen ? '\u25BC' : '\u25B6'} Localizacao dos Motoristas
+          </span>
+          <span style={{ fontSize: 12, color: '#64748b' }}>
+            ({checkinRows.filter((r) => r.localizacao).length}/{checkinRows.length} com registro hoje)
+          </span>
+        </div>
+
+        {checkinOpen && (
+          <div style={{ marginTop: 12 }}>
+            {/* Mini form */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+              <select
+                value={checkinMotorista}
+                onChange={(e) => setCheckinMotorista(e.target.value)}
+                style={{ ...select, width: 200 } as any}
+              >
+                <option value="">-- Motorista --</option>
+                {motoristas.map((m) => (
+                  <option key={m.id} value={m.id}>{m.nome}</option>
+                ))}
+              </select>
+              <input
+                value={checkinLocal}
+                onChange={(e) => setCheckinLocal(e.target.value)}
+                placeholder="Localizacao"
+                style={{ ...input, width: 220 }}
+              />
+              <input
+                value={checkinObs}
+                onChange={(e) => setCheckinObs(e.target.value)}
+                placeholder="Observacao (opcional)"
+                style={{ ...input, width: 200 }}
+              />
+              <button
+                onClick={() => void submitCheckin()}
+                disabled={checkinBusy}
+                style={{
+                  ...btn,
+                  background: checkinBusy ? '#d1d5db' : '#1A4A1A',
+                  color: '#fff',
+                  opacity: checkinBusy ? 0.7 : 1,
+                }}
+              >
+                {checkinBusy ? 'Registrando...' : 'Registrar'}
+              </button>
+            </div>
+
+            {checkinErr && <div style={{ color: '#dc2626', fontWeight: 900, fontSize: 13, marginBottom: 8 }}>{checkinErr}</div>}
+            {checkinOk && <div style={{ color: '#16a34a', fontWeight: 900, fontSize: 13, marginBottom: 8 }}>{checkinOk}</div>}
+
+            {/* Checkin table */}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc' }}>
+                    <th style={{ textAlign: 'left', padding: 10, fontSize: 12, opacity: 0.9 }}>Motorista</th>
+                    <th style={{ textAlign: 'left', padding: 10, fontSize: 12, opacity: 0.9 }}>Ultima localizacao</th>
+                    <th style={{ textAlign: 'left', padding: 10, fontSize: 12, opacity: 0.9 }}>Horario</th>
+                    <th style={{ textAlign: 'left', padding: 10, fontSize: 12, opacity: 0.9 }}>Observacao</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {checkinRows.map((r) => (
+                    <tr key={r.motoristaId} style={{ borderTop: '1px solid #e2e8f0' }}>
+                      <td style={{ padding: 10, fontWeight: 900 }}>{r.motoristaNome}</td>
+                      <td style={{ padding: 10 }}>{r.localizacao ?? <span style={{ opacity: 0.5 }}>Sem registro hoje</span>}</td>
+                      <td style={{ padding: 10 }}>
+                        {r.horario
+                          ? new Date(r.horario).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                          : '\u2014'}
+                      </td>
+                      <td style={{ padding: 10, fontSize: 13, opacity: 0.85 }}>{r.observacao ?? '\u2014'}</td>
+                    </tr>
+                  ))}
+                  {checkinRows.length === 0 && (
+                    <tr>
+                      <td colSpan={4} style={{ padding: 16, opacity: 0.8 }}>Nenhum motorista cadastrado.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ ...card, overflowX: 'auto' }}>
@@ -305,6 +494,26 @@ export default function EntregasPage() {
                   </td>
                   <td style={{ padding: 10 }}>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <button
+                        style={{
+                          ...btnMini,
+                          background: busy ? '#f1f5f9' : '#6366f1',
+                          color: busy ? '#94a3b8' : '#fff',
+                          border: 'none',
+                        }}
+                        disabled={busy}
+                        onClick={() =>
+                          void acao(
+                            c.id,
+                            'EM_CARGA',
+                            `Coleta marcada como EM_CARGA via /entregas (NF ${c.nf})`,
+                          )
+                        }
+                        title="POST /api/coletas/[id]/acao (EM_CARGA)"
+                      >
+                        {busy ? 'Registrando…' : 'Marcar EM_CARGA'}
+                      </button>
+
                       <button
                         style={{
                           ...btnMini,

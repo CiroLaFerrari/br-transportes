@@ -284,6 +284,46 @@ function extractFretePctFromNotes(notesRaw: string) {
   return '';
 }
 
+function upsertFreteClienteFixoInNotes(notesRaw: string, fixo: string) {
+  const key = 'FRETE_CLIENTE_FIXO=';
+  const lines = String(notesRaw || '').split('\n');
+  const cleaned = lines.filter((l) => !l.trim().toUpperCase().startsWith(key));
+  const v = String(fixo || '').trim();
+  if (v) cleaned.unshift(`${key}${v}`);
+  return cleaned.join('\n').trim();
+}
+function extractFreteClienteFixoFromNotes(notesRaw: string) {
+  const key = 'FRETE_CLIENTE_FIXO=';
+  const lines = String(notesRaw || '').split('\n');
+  for (const l of lines) {
+    const t = l.trim();
+    if (t.toUpperCase().startsWith(key)) {
+      return t.slice(key.length).trim();
+    }
+  }
+  return '';
+}
+
+function upsertFreteClienteTipoInNotes(notesRaw: string, tipo: string) {
+  const key = 'FRETE_CLIENTE_TIPO=';
+  const lines = String(notesRaw || '').split('\n');
+  const cleaned = lines.filter((l) => !l.trim().toUpperCase().startsWith(key));
+  const v = String(tipo || '').trim().toUpperCase();
+  if (v) cleaned.unshift(`${key}${v}`);
+  return cleaned.join('\n').trim();
+}
+function extractFreteClienteTipoFromNotes(notesRaw: string) {
+  const key = 'FRETE_CLIENTE_TIPO=';
+  const lines = String(notesRaw || '').split('\n');
+  for (const l of lines) {
+    const t = l.trim();
+    if (t.toUpperCase().startsWith(key)) {
+      return t.slice(key.length).trim().toUpperCase();
+    }
+  }
+  return '';
+}
+
 function upsertMotoristaPctInNotes(notesRaw: string, pct: string) {
   const key = 'FRETE_MOTORISTA_PCT=';
   const lines = String(notesRaw || '').split('\n');
@@ -375,6 +415,8 @@ export default function PlanejamentoPage() {
 
   // ✅ Frete cliente (%) editável por planejamento (fica no notes por enquanto)
   const [freteClientePct, setFreteClientePct] = useState<string>('6.5');
+  const [freteClienteFixo, setFreteClienteFixo] = useState<string>('0');
+  const [freteClienteTipo, setFreteClienteTipo] = useState<'PCT' | 'FIXO'>('PCT');
 
   // ✅ Viabilidade: motorista (editável por planejamento)
   const [freteMotoristaPct, setFreteMotoristaPct] = useState<string>('0');
@@ -428,6 +470,8 @@ export default function PlanejamentoPage() {
   const [patioErr, setPatioErr] = useState<string | null>(null);
   const [patioList, setPatioList] = useState<PatioColetaRow[]>([]);
   const [patioSelected, setPatioSelected] = useState<Record<string, boolean>>({});
+  const [ufFilter, setUfFilter] = useState<Set<string>>(new Set());
+  const [ufDropOpen, setUfDropOpen] = useState(false);
 
   // ✅ Requisito 3: ações do planejamento fechado
   const [closing, setClosing] = useState(false);
@@ -639,6 +683,12 @@ export default function PlanejamentoPage() {
       const pct = extractFretePctFromNotes(n);
       setFreteClientePct(pct || '6.5');
 
+      const cFixo = extractFreteClienteFixoFromNotes(n);
+      setFreteClienteFixo(cFixo || '0');
+
+      const cTipo = extractFreteClienteTipoFromNotes(n);
+      setFreteClienteTipo(cTipo === 'FIXO' ? 'FIXO' : 'PCT');
+
       const mp = extractMotoristaPctFromNotes(n);
       setFreteMotoristaPct(mp || '0');
 
@@ -797,6 +847,8 @@ export default function PlanejamentoPage() {
       const id = await ensurePlanId();
 
       let mergedNotes = upsertFretePctInNotes(notes, freteClientePct);
+      mergedNotes = upsertFreteClienteFixoInNotes(mergedNotes, freteClienteFixo);
+      mergedNotes = upsertFreteClienteTipoInNotes(mergedNotes, freteClienteTipo);
       mergedNotes = upsertMotoristaPctInNotes(mergedNotes, freteMotoristaPct);
       mergedNotes = upsertMotoristaFixoInNotes(mergedNotes, freteMotoristaFixo);
 
@@ -1202,6 +1254,29 @@ export default function PlanejamentoPage() {
     setPatioSelected(next);
   }
 
+  const availableUfs = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of patioList) {
+      const u = String(c.uf || '').toUpperCase();
+      if (u) set.add(u);
+    }
+    return [...set].sort();
+  }, [patioList]);
+
+  const ufCountMap = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const c of patioList) {
+      const u = String(c.uf || '').toUpperCase();
+      if (u) m[u] = (m[u] || 0) + 1;
+    }
+    return m;
+  }, [patioList]);
+
+  const filteredPatioList = useMemo(() => {
+    if (ufFilter.size === 0) return patioList;
+    return patioList.filter((c) => ufFilter.has(String(c.uf || '').toUpperCase()));
+  }, [patioList, ufFilter]);
+
   function patioAddSelectedToIds() {
     const ids = parseIdsFromText(coletaIdsText);
     const setIds = new Set(ids);
@@ -1441,11 +1516,12 @@ export default function PlanejamentoPage() {
 
   const viabilidade = useMemo(() => {
     const pctCliente = toNum(freteClientePct);
+    const fixoCliente = toNum(freteClienteFixo);
     const pctMotorista = toNum(freteMotoristaPct);
     const fixoMotorista = toNum(freteMotoristaFixo);
 
     const freteBruto = coletasVinculadasResumo.frete;
-    const receita = freteBruto * (pctCliente / 100);
+    const receita = freteClienteTipo === 'FIXO' ? fixoCliente : freteBruto * (pctCliente / 100);
 
     const custo = costResult?.breakdown?.total != null ? Number(costResult.breakdown.total) : 0;
 
@@ -1455,6 +1531,7 @@ export default function PlanejamentoPage() {
 
     return {
       pctCliente,
+      fixoCliente,
       pctMotorista,
       fixoMotorista,
       freteBruto,
@@ -1463,7 +1540,7 @@ export default function PlanejamentoPage() {
       motoristaValor,
       lucro,
     };
-  }, [freteClientePct, freteMotoristaPct, freteMotoristaFixo, coletasVinculadasResumo, costResult]);
+  }, [freteClientePct, freteClienteFixo, freteClienteTipo, freteMotoristaPct, freteMotoristaFixo, coletasVinculadasResumo, costResult]);
 
   const travaFecharCarga = capacidade.overKg || capacidade.overM3;
 
@@ -1498,6 +1575,88 @@ export default function PlanejamentoPage() {
           >
             {patioLoading ? 'Carregando…' : 'Carregar pátio'}
           </button>
+
+          {/* UF Filter */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setUfDropOpen((v) => !v)}
+              disabled={patioList.length === 0}
+              style={{
+                ...btn,
+                background: ufFilter.size > 0 ? '#1A4A1A' : '#f1f5f9',
+                color: ufFilter.size > 0 ? '#F5BE16' : '#1e293b',
+                fontWeight: ufFilter.size > 0 ? 700 : 500,
+                opacity: patioList.length === 0 ? 0.5 : 1,
+              }}
+            >
+              Filtrar UF{ufFilter.size > 0 ? ` (${ufFilter.size})` : ''}
+            </button>
+            {ufDropOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '110%',
+                  left: 0,
+                  zIndex: 50,
+                  background: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 8,
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                  padding: 10,
+                  minWidth: 180,
+                  maxHeight: 320,
+                  overflowY: 'auto',
+                }}
+              >
+                <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                  <button
+                    onClick={() => setUfFilter(new Set(availableUfs))}
+                    style={{ ...btn, fontSize: 11, padding: '2px 8px', background: '#1A4A1A', color: '#F5BE16' }}
+                  >
+                    Selecionar todas
+                  </button>
+                  <button
+                    onClick={() => setUfFilter(new Set())}
+                    style={{ ...btn, fontSize: 11, padding: '2px 8px', background: '#f1f5f9', color: '#1e293b' }}
+                  >
+                    Limpar
+                  </button>
+                </div>
+                {availableUfs.map((uf) => (
+                  <label
+                    key={uf}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '3px 0',
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      color: '#1e293b',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={ufFilter.has(uf)}
+                      onChange={(e) => {
+                        setUfFilter((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(uf);
+                          else next.delete(uf);
+                          return next;
+                        });
+                      }}
+                    />
+                    <span style={{ fontWeight: 600 }}>{uf}</span>
+                    <span style={{ color: '#64748b', fontSize: 12 }}>({ufCountMap[uf] || 0})</span>
+                  </label>
+                ))}
+                {availableUfs.length === 0 && (
+                  <div style={{ fontSize: 12, color: '#94a3b8' }}>Nenhuma UF disponível</div>
+                )}
+              </div>
+            )}
+          </div>
 
           <button onClick={() => patioToggleAll(true)} disabled={patioLoading || patioList.length === 0} style={{ ...btn, background: '#f1f5f9', color: 'white', opacity: patioLoading ? 0.7 : 1 }}>
             Selecionar tudo
@@ -1580,7 +1739,7 @@ export default function PlanejamentoPage() {
               </tr>
             </thead>
             <tbody>
-              {patioList.map((c) => (
+              {filteredPatioList.map((c) => (
                 <tr key={c.id}>
                   <td style={td}>
                     <input type="checkbox" checked={!!patioSelected[c.id]} onChange={(e) => setPatioSelected((prev) => ({ ...prev, [c.id]: e.target.checked }))} />
@@ -1599,10 +1758,10 @@ export default function PlanejamentoPage() {
                   <td style={{ ...td, fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>{c.id}</td>
                 </tr>
               ))}
-              {patioList.length === 0 && !patioLoading && (
+              {filteredPatioList.length === 0 && !patioLoading && (
                 <tr>
                   <td style={td} colSpan={9}>
-                    (Nenhuma coleta EM_PATIO carregada)
+                    {ufFilter.size > 0 ? '(Nenhuma coleta para as UFs selecionadas)' : '(Nenhuma coleta EM_PATIO carregada)'}
                   </td>
                 </tr>
               )}
@@ -1780,8 +1939,22 @@ export default function PlanejamentoPage() {
             </label>
 
             <label style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={labelStyle}>Frete cliente (%)</span>
-              <input value={freteClientePct} onChange={(e) => setFreteClientePct(e.target.value)} style={inputStyle} placeholder="6.5" title="Campo editável por planejamento. Salva dentro do notes como FRETE_CLIENTE_PCT=..." />
+              <span style={labelStyle}>Frete cliente</span>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <select
+                  value={freteClienteTipo}
+                  onChange={(e) => setFreteClienteTipo(e.target.value as 'PCT' | 'FIXO')}
+                  style={{ ...inputStyle, maxWidth: 160 } as any}
+                >
+                  <option value="PCT">Percentual (%)</option>
+                  <option value="FIXO">Valor Fixo (R$)</option>
+                </select>
+                {freteClienteTipo === 'PCT' ? (
+                  <input value={freteClientePct} onChange={(e) => setFreteClientePct(e.target.value)} style={inputStyle} placeholder="6.5" title="Percentual do frete bruto cobrado do cliente. Salva como FRETE_CLIENTE_PCT no notes." />
+                ) : (
+                  <input value={freteClienteFixo} onChange={(e) => setFreteClienteFixo(e.target.value)} style={inputStyle} placeholder="0.00" title="Valor fixo (R$) do frete cliente. Salva como FRETE_CLIENTE_FIXO no notes." />
+                )}
+              </div>
             </label>
 
             <label style={{ display: 'flex', flexDirection: 'column' }}>
@@ -1852,7 +2025,7 @@ export default function PlanejamentoPage() {
                     <b>{Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(viabilidade.freteBruto)}</b>
                   </div>
                   <div>
-                    <span style={{ color: '#64748b' }}>Receita ({viabilidade.pctCliente}%):</span>{' '}
+                    <span style={{ color: '#64748b' }}>Receita ({freteClienteTipo === 'FIXO' ? `fixo R$${viabilidade.fixoCliente}` : `${viabilidade.pctCliente}%`}):</span>{' '}
                     <b>{Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(viabilidade.receita)}</b>
                   </div>
                   <div>

@@ -10,7 +10,49 @@ type Veiculo = {
   compCm: number;
   largCm: number;
   altCm: number;
+  numEixos: number | null;
+  licenciamentoUrl: string | null;
+  licenciamentoVencimento: string | null;
+  documentosUrl: string | null;
+  documentosVencimento: string | null;
 };
+
+function docExpiryBadge(licVenc: string | null, docVenc: string | null): React.ReactNode {
+  const now = new Date();
+  const badges: React.ReactNode[] = [];
+
+  const check = (dateStr: string | null, label: string) => {
+    if (!dateStr) return;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return;
+    const diffMs = d.getTime() - now.getTime();
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    if (diffDays < 0) {
+      badges.push(
+        <span key={label} style={{ display: 'inline-block', background: '#ef4444', color: 'white', fontSize: 11, padding: '2px 6px', borderRadius: 4, marginLeft: 4 }}>
+          {label} vencido
+        </span>
+      );
+    } else if (diffDays <= 30) {
+      badges.push(
+        <span key={label} style={{ display: 'inline-block', background: '#f59e0b', color: 'black', fontSize: 11, padding: '2px 6px', borderRadius: 4, marginLeft: 4 }}>
+          {label} vence em {Math.ceil(diffDays)}d
+        </span>
+      );
+    }
+  };
+
+  check(licVenc, 'Lic.');
+  check(docVenc, 'Doc.');
+  return badges.length > 0 ? <>{badges}</> : null;
+}
+
+function toDateInputValue(dateStr: string | null | undefined): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
+}
 
 export default function VeiculosPage() {
   const [list, setList] = useState<Veiculo[]>([]);
@@ -23,6 +65,11 @@ export default function VeiculosPage() {
     compCm: '',
     largCm: '',
     altCm: '',
+    numEixos: '',
+    licenciamentoUrl: '',
+    licenciamentoVencimento: '',
+    documentosUrl: '',
+    documentosVencimento: '',
   });
 
   // edição inline
@@ -34,6 +81,11 @@ export default function VeiculosPage() {
     compCm: '',
     largCm: '',
     altCm: '',
+    numEixos: '',
+    licenciamentoUrl: '',
+    licenciamentoVencimento: '',
+    documentosUrl: '',
+    documentosVencimento: '',
   });
   const [editSaving, setEditSaving] = useState(false);
 
@@ -89,18 +141,33 @@ export default function VeiculosPage() {
       return setMsg('compCm, largCm e altCm devem ser inteiros.');
     }
 
+    const payload: Record<string, unknown> = { placa, capacidadeKg, capacidadeM3, compCm, largCm, altCm };
+
+    if (form.numEixos.trim()) {
+      const n = Number(form.numEixos);
+      if (!Number.isInteger(n)) return setMsg('Num. Eixos deve ser inteiro.');
+      payload.numEixos = n;
+    }
+    if (form.licenciamentoUrl.trim()) payload.licenciamentoUrl = form.licenciamentoUrl.trim();
+    if (form.licenciamentoVencimento) payload.licenciamentoVencimento = form.licenciamentoVencimento;
+    if (form.documentosUrl.trim()) payload.documentosUrl = form.documentosUrl.trim();
+    if (form.documentosVencimento) payload.documentosVencimento = form.documentosVencimento;
+
     try {
       const res = await fetch('/api/veiculos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ placa, capacidadeKg, capacidadeM3, compCm, largCm, altCm }),
+        body: JSON.stringify(payload),
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
         setMsg(json?.error || 'Falha ao criar veículo');
         return;
       }
-      setForm({ placa: '', capacidadeKg: '', capacidadeM3: '', compCm: '', largCm: '', altCm: '' });
+      setForm({
+        placa: '', capacidadeKg: '', capacidadeM3: '', compCm: '', largCm: '', altCm: '',
+        numEixos: '', licenciamentoUrl: '', licenciamentoVencimento: '', documentosUrl: '', documentosVencimento: '',
+      });
       await load();
       setMsg('Veículo criado com sucesso.');
     } catch {
@@ -132,6 +199,11 @@ export default function VeiculosPage() {
       compCm: String(v.compCm),
       largCm: String(v.largCm),
       altCm: String(v.altCm),
+      numEixos: v.numEixos != null ? String(v.numEixos) : '',
+      licenciamentoUrl: v.licenciamentoUrl ?? '',
+      licenciamentoVencimento: toDateInputValue(v.licenciamentoVencimento),
+      documentosUrl: v.documentosUrl ?? '',
+      documentosVencimento: toDateInputValue(v.documentosVencimento),
     });
   }
 
@@ -140,17 +212,25 @@ export default function VeiculosPage() {
     try {
       setEditSaving(true);
       setMsg(null);
+
+      const payload: Record<string, unknown> = {
+        placa: editForm.placa.trim().toUpperCase(),
+        capacidadeKg: Number(editForm.capacidadeKg),
+        capacidadeM3: Number(editForm.capacidadeM3),
+        compCm: Number(editForm.compCm),
+        largCm: Number(editForm.largCm),
+        altCm: Number(editForm.altCm),
+        numEixos: editForm.numEixos.trim() ? Number(editForm.numEixos) : null,
+        licenciamentoUrl: editForm.licenciamentoUrl.trim() || null,
+        licenciamentoVencimento: editForm.licenciamentoVencimento || null,
+        documentosUrl: editForm.documentosUrl.trim() || null,
+        documentosVencimento: editForm.documentosVencimento || null,
+      };
+
       const res = await fetch(`/api/veiculos/${editId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          placa: editForm.placa.trim().toUpperCase(),
-          capacidadeKg: Number(editForm.capacidadeKg),
-          capacidadeM3: Number(editForm.capacidadeM3),
-          compCm: Number(editForm.compCm),
-          largCm: Number(editForm.largCm),
-          altCm: Number(editForm.altCm),
-        }),
+        body: JSON.stringify(payload),
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
@@ -167,7 +247,7 @@ export default function VeiculosPage() {
     }
   }
 
-  const inputField = (name: string, value: string, placeholder: string, label: string, inputMode?: string) => (
+  const inputField = (name: string, value: string, placeholder: string, label: string, inputMode?: string, type?: string, required?: boolean) => (
     <div>
       <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>{label}</label>
       <input
@@ -176,14 +256,15 @@ export default function VeiculosPage() {
         onChange={onChange}
         placeholder={placeholder}
         inputMode={inputMode as any}
+        type={type || 'text'}
         style={{ width: '100%', padding: 8, background: '#ffffff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }}
-        required
+        required={required !== false}
       />
     </div>
   );
 
   return (
-    <div style={{ maxWidth: 1200, margin: '20px auto', padding: 16 }}>
+    <div style={{ maxWidth: 1400, margin: '20px auto', padding: 16 }}>
       <h1 style={{ fontSize: 24, fontWeight: 900, marginBottom: 12, color: '#1A4A1A' }}>Veículos</h1>
 
       <form
@@ -191,7 +272,7 @@ export default function VeiculosPage() {
         style={{
           display: 'grid',
           gap: 8,
-          gridTemplateColumns: '120px 140px 140px 120px 120px 120px',
+          gridTemplateColumns: '120px 140px 140px 100px 100px 100px 80px',
           alignItems: 'end',
           marginBottom: 16,
           background: '#ffffff',
@@ -206,8 +287,51 @@ export default function VeiculosPage() {
         {inputField('compCm', form.compCm, '300', 'Comp. (cm)', 'numeric')}
         {inputField('largCm', form.largCm, '180', 'Larg. (cm)', 'numeric')}
         {inputField('altCm', form.altCm, '160', 'Alt. (cm)', 'numeric')}
+        {inputField('numEixos', form.numEixos, '2', 'Eixos', 'numeric', 'text', false)}
 
-        <div style={{ gridColumn: '1 / span 6', display: 'flex', gap: 8 }}>
+        {/* Row 2: URL and date fields */}
+        <div style={{ gridColumn: '1 / span 3' }}>
+          <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Link Licenciamento</label>
+          <input
+            name="licenciamentoUrl"
+            value={form.licenciamentoUrl}
+            onChange={onChange}
+            placeholder="https://..."
+            style={{ width: '100%', padding: 8, background: '#ffffff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }}
+          />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Venc. Licenciamento</label>
+          <input
+            name="licenciamentoVencimento"
+            value={form.licenciamentoVencimento}
+            onChange={onChange}
+            type="date"
+            style={{ width: '100%', padding: 8, background: '#ffffff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }}
+          />
+        </div>
+        <div style={{ gridColumn: '5 / span 2' }}>
+          <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Link Documentos</label>
+          <input
+            name="documentosUrl"
+            value={form.documentosUrl}
+            onChange={onChange}
+            placeholder="https://..."
+            style={{ width: '100%', padding: 8, background: '#ffffff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }}
+          />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Venc. Documentos</label>
+          <input
+            name="documentosVencimento"
+            value={form.documentosVencimento}
+            onChange={onChange}
+            type="date"
+            style={{ width: '100%', padding: 8, background: '#ffffff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }}
+          />
+        </div>
+
+        <div style={{ gridColumn: '1 / span 7', display: 'flex', gap: 8 }}>
           <button type="submit" style={{ padding: '8px 12px', background: '#2563eb', color: 'white', border: 0, borderRadius: 6 }}>
             Criar veículo
           </button>
@@ -218,16 +342,18 @@ export default function VeiculosPage() {
       {loading ? (
         <div>Carregando...</div>
       ) : (
-        <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
             <thead>
               <tr style={{ background: '#ffffff', color: '#64748b' }}>
                 <th style={{ textAlign: 'left', ...cellStyle }}>Placa</th>
                 <th style={{ textAlign: 'left', ...cellStyle }}>Cap. (kg)</th>
                 <th style={{ textAlign: 'left', ...cellStyle }}>Cap. (m³)</th>
-                <th style={{ textAlign: 'left', ...cellStyle }}>Comp. (cm)</th>
-                <th style={{ textAlign: 'left', ...cellStyle }}>Larg. (cm)</th>
-                <th style={{ textAlign: 'left', ...cellStyle }}>Alt. (cm)</th>
+                <th style={{ textAlign: 'left', ...cellStyle }}>Comp.</th>
+                <th style={{ textAlign: 'left', ...cellStyle }}>Larg.</th>
+                <th style={{ textAlign: 'left', ...cellStyle }}>Alt.</th>
+                <th style={{ textAlign: 'left', ...cellStyle }}>Eixos</th>
+                <th style={{ textAlign: 'left', ...cellStyle }}>Alertas</th>
                 <th style={{ textAlign: 'left', ...cellStyle }}>Ações</th>
               </tr>
             </thead>
@@ -255,9 +381,20 @@ export default function VeiculosPage() {
                         <input value={editForm.altCm} onChange={(e) => setEditForm((p) => ({ ...p, altCm: e.target.value }))} style={editInput} inputMode="numeric" />
                       </td>
                       <td style={cellStyle}>
+                        <input value={editForm.numEixos} onChange={(e) => setEditForm((p) => ({ ...p, numEixos: e.target.value }))} style={editInput} inputMode="numeric" />
+                      </td>
+                      <td style={cellStyle}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}>
+                          <input value={editForm.licenciamentoUrl} onChange={(e) => setEditForm((p) => ({ ...p, licenciamentoUrl: e.target.value }))} style={editInput} placeholder="Link Lic." />
+                          <input value={editForm.licenciamentoVencimento} onChange={(e) => setEditForm((p) => ({ ...p, licenciamentoVencimento: e.target.value }))} style={editInput} type="date" title="Venc. Licenciamento" />
+                          <input value={editForm.documentosUrl} onChange={(e) => setEditForm((p) => ({ ...p, documentosUrl: e.target.value }))} style={editInput} placeholder="Link Doc." />
+                          <input value={editForm.documentosVencimento} onChange={(e) => setEditForm((p) => ({ ...p, documentosVencimento: e.target.value }))} style={editInput} type="date" title="Venc. Documentos" />
+                        </div>
+                      </td>
+                      <td style={cellStyle}>
                         <div style={{ display: 'flex', gap: 4 }}>
                           <button onClick={saveEdit} disabled={editSaving} style={{ ...btnSmall, background: '#22c55e', color: 'black' }}>
-                            {editSaving ? '…' : 'Salvar'}
+                            {editSaving ? '...' : 'Salvar'}
                           </button>
                           <button onClick={() => setEditId(null)} style={{ ...btnSmall, background: '#64748b', color: 'white' }}>
                             Cancelar
@@ -273,6 +410,12 @@ export default function VeiculosPage() {
                       <td style={cellStyle}>{v.compCm}</td>
                       <td style={cellStyle}>{v.largCm}</td>
                       <td style={cellStyle}>{v.altCm}</td>
+                      <td style={cellStyle}>{v.numEixos ?? '—'}</td>
+                      <td style={cellStyle}>
+                        {docExpiryBadge(v.licenciamentoVencimento, v.documentosVencimento) || (
+                          <span style={{ color: '#94a3b8', fontSize: 12 }}>OK</span>
+                        )}
+                      </td>
                       <td style={cellStyle}>
                         <div style={{ display: 'flex', gap: 4 }}>
                           <button onClick={() => startEdit(v)} style={{ ...btnSmall, background: '#f59e0b', color: 'black' }}>
@@ -289,7 +432,7 @@ export default function VeiculosPage() {
               ))}
               {list.length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ padding: 16, color: '#64748b', textAlign: 'center' }}>
+                  <td colSpan={9} style={{ padding: 16, color: '#64748b', textAlign: 'center' }}>
                     Nenhum veículo cadastrado.
                   </td>
                 </tr>

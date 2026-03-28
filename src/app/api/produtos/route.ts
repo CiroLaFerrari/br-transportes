@@ -97,6 +97,7 @@ export async function GET(req: NextRequest) {
         code: true,
         tipoCodigo: true,
         descricao: true,
+        precoUnitario: true,
         pesoKg: true,
         comprimentoCm: true,
         larguraCm: true,
@@ -132,6 +133,7 @@ export async function POST(req: NextRequest) {
 
     if (!descricao) return json({ ok: false, error: 'Campo "descricao" é obrigatório.' }, 400);
 
+    const precoUnitario = toNum(body.precoUnitario);
     const pesoKg = toNum(body.pesoKg);
     const compCm = toNum(body.comprimentoCm);
     const largCm = toNum(body.larguraCm);
@@ -164,6 +166,7 @@ export async function POST(req: NextRequest) {
           code,
           tipoCodigo: tipoCodigo as any,
           descricao,
+          precoUnitario: precoUnitario ?? undefined,
           pesoKg: pesoKg ?? undefined,
           comprimentoCm: compCm ?? undefined,
           larguraCm: largCm ?? undefined,

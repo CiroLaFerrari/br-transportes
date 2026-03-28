@@ -6,6 +6,7 @@ type Produto = {
   id: string;
   code: string;
   descricao: string;
+  precoUnitario?: number | null;
   pesoKg?: number | null;
   alturaCm?: number | null;
   larguraCm?: number | null;
@@ -56,6 +57,7 @@ export default function ProdutosPage() {
     () => ({
       code: '',
       descricao: '',
+      precoUnitario: '',
       pesoKg: '',
       alturaCm: '',
       larguraCm: '',
@@ -171,6 +173,7 @@ export default function ProdutosPage() {
       const body: any = {
         code: String(form.code || '').trim(),
         descricao: String(form.descricao || '').trim(),
+        precoUnitario: form.precoUnitario === '' ? null : Number(form.precoUnitario),
         pesoKg: form.pesoKg === '' ? null : Number(form.pesoKg),
         alturaCm: form.alturaCm === '' ? null : Number(form.alturaCm),
         larguraCm: form.larguraCm === '' ? null : Number(form.larguraCm),
@@ -227,6 +230,7 @@ export default function ProdutosPage() {
       setForm({
         code: p.code,
         descricao: p.descricao,
+        precoUnitario: num(p.precoUnitario),
         pesoKg: num(p.pesoKg),
         alturaCm: num(p.alturaCm),
         larguraCm: num(p.larguraCm),
@@ -350,6 +354,7 @@ export default function ProdutosPage() {
             <tr>
               <th style={th}>Código</th>
               <th style={th}>Descrição</th>
+              <th style={th}>Preço (R$)</th>
               <th style={th}>Peso (kg)</th>
               <th style={th}>L x C (cm)</th>
               <th style={th}>Área (m²)</th>
@@ -362,6 +367,7 @@ export default function ProdutosPage() {
               <tr key={p.id}>
                 <td style={td}>{p.code}</td>
                 <td style={td}>{p.descricao}</td>
+                <td style={tdNum}>{p.precoUnitario != null ? p.precoUnitario.toFixed(2) : '-'}</td>
                 <td style={tdNum}>{p.pesoKg ?? '-'}</td>
                 <td style={tdNum}>
                   {p.larguraCm ?? '-'} x {p.comprimentoCm ?? '-'}
@@ -383,7 +389,7 @@ export default function ProdutosPage() {
 
             {items.length === 0 && !loadingList && (
               <tr>
-                <td style={td} colSpan={7}>
+                <td style={td} colSpan={8}>
                   (Sem registros)
                 </td>
               </tr>
@@ -408,6 +414,11 @@ export default function ProdutosPage() {
           <label>
             <div style={labelStyle}>Peso (kg)</div>
             <input value={String(form.pesoKg ?? '')} onChange={(e) => setForm({ ...form, pesoKg: e.target.value as any })} style={inputStyle} />
+          </label>
+
+          <label>
+            <div style={labelStyle}>Preço unitário (R$)</div>
+            <input value={String(form.precoUnitario ?? '')} onChange={(e) => setForm({ ...form, precoUnitario: e.target.value as any })} style={inputStyle} />
           </label>
 
           <label>
@@ -491,6 +502,7 @@ export default function ProdutosPage() {
                   <div class="grid">
                     <div><b>Código</b>${f.code}</div>
                     <div><b>Descrição</b>${f.descricao}</div>
+                    <div><b>Preço unitário (R$)</b>${f.precoUnitario != null ? Number(f.precoUnitario).toFixed(2) : '-'}</div>
                     <div><b>Peso (kg)</b>${f.pesoKg ?? '-'}</div>
                     <div><b>Altura (cm)</b>${f.alturaCm ?? '-'}</div>
                     <div><b>Largura (cm)</b>${f.larguraCm ?? '-'}</div>
@@ -516,11 +528,11 @@ export default function ProdutosPage() {
           <button
             onClick={() => {
               const rows = items.map((p) => [
-                p.code, p.descricao, p.pesoKg ?? '', p.alturaCm ?? '', p.larguraCm ?? '', p.comprimentoCm ?? '',
+                p.code, p.descricao, p.precoUnitario != null ? p.precoUnitario.toFixed(2) : '', p.pesoKg ?? '', p.alturaCm ?? '', p.larguraCm ?? '', p.comprimentoCm ?? '',
                 p.areaM2 ?? '', p.volumeM3 ?? '', p.embalado ? 'Sim' : 'Não', p.tipoEmbalagem ?? '',
                 p.fragil ? 'Sim' : 'Não', p.empilhavel ? 'Sim' : 'Não', p.posicao ?? '', p.desmontavel ? 'Sim' : 'Não',
               ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
-              const header = 'Código,Descrição,Peso (kg),Altura (cm),Largura (cm),Comprimento (cm),Área (m²),Volume (m³),Embalado,Tipo Embalagem,Frágil,Empilhável,Posição,Desmontável';
+              const header = 'Código,Descrição,Preço Unitário (R$),Peso (kg),Altura (cm),Largura (cm),Comprimento (cm),Área (m²),Volume (m³),Embalado,Tipo Embalagem,Frágil,Empilhável,Posição,Desmontável';
               const csv = '\uFEFF' + header + '\n' + rows.join('\n');
               const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
               const url = URL.createObjectURL(blob);

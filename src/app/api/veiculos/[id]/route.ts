@@ -34,6 +34,36 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     if (body?.largCm !== undefined) data.largCm = Number(body.largCm);
     if (body?.altCm !== undefined) data.altCm = Number(body.altCm);
 
+    if (body?.numEixos !== undefined) {
+      if (body.numEixos === null || body.numEixos === '') {
+        data.numEixos = null;
+      } else {
+        const n = Number(body.numEixos);
+        if (!Number.isInteger(n)) return NextResponse.json({ error: 'numEixos deve ser inteiro.' }, { status: 400 });
+        data.numEixos = n;
+      }
+    }
+    if (body?.licenciamentoUrl !== undefined) data.licenciamentoUrl = body.licenciamentoUrl ? String(body.licenciamentoUrl).trim() : null;
+    if (body?.documentosUrl !== undefined) data.documentosUrl = body.documentosUrl ? String(body.documentosUrl).trim() : null;
+    if (body?.licenciamentoVencimento !== undefined) {
+      if (!body.licenciamentoVencimento) {
+        data.licenciamentoVencimento = null;
+      } else {
+        const d = new Date(body.licenciamentoVencimento);
+        if (isNaN(d.getTime())) return NextResponse.json({ error: 'licenciamentoVencimento inválido.' }, { status: 400 });
+        data.licenciamentoVencimento = d;
+      }
+    }
+    if (body?.documentosVencimento !== undefined) {
+      if (!body.documentosVencimento) {
+        data.documentosVencimento = null;
+      } else {
+        const d = new Date(body.documentosVencimento);
+        if (isNaN(d.getTime())) return NextResponse.json({ error: 'documentosVencimento inválido.' }, { status: 400 });
+        data.documentosVencimento = d;
+      }
+    }
+
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: 'Nenhum campo informado.' }, { status: 400 });
     }

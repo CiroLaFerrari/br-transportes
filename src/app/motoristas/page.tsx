@@ -7,6 +7,8 @@ type Motorista = {
   nome: string;
   documento?: string | null;
   disponibilidade: boolean;
+  cnhUrl?: string | null;
+  cnhVencimento?: string | null;
   createdAt?: string;
 };
 
@@ -14,11 +16,11 @@ export default function MotoristasPage() {
   const [list, setList] = useState<Motorista[]>([]);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [form, setForm] = useState({ nome: '', documento: '', disponibilidade: true });
+  const [form, setForm] = useState({ nome: '', documento: '', disponibilidade: true, cnhUrl: '', cnhVencimento: '' });
 
   // edição inline
   const [editId, setEditId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ nome: '', documento: '', disponibilidade: true });
+  const [editForm, setEditForm] = useState({ nome: '', documento: '', disponibilidade: true, cnhUrl: '', cnhVencimento: '' });
   const [editSaving, setEditSaving] = useState(false);
 
   const cellStyle: React.CSSProperties = { padding: 8, borderBottom: '1px solid #e2e8f0' };
@@ -64,6 +66,8 @@ export default function MotoristasPage() {
           nome: form.nome,
           documento: form.documento || null,
           disponibilidade: Boolean(form.disponibilidade),
+          cnhUrl: form.cnhUrl || null,
+          cnhVencimento: form.cnhVencimento || null,
         }),
       });
       const json = await res.json().catch(() => null);
@@ -71,7 +75,7 @@ export default function MotoristasPage() {
         setMsg(json?.error || 'Falha ao criar');
         return;
       }
-      setForm({ nome: '', documento: '', disponibilidade: true });
+      setForm({ nome: '', documento: '', disponibilidade: true, cnhUrl: '', cnhVencimento: '' });
       await load();
       setMsg('Motorista criado com sucesso.');
     } catch {
@@ -96,7 +100,13 @@ export default function MotoristasPage() {
 
   function startEdit(m: Motorista) {
     setEditId(m.id);
-    setEditForm({ nome: m.nome, documento: m.documento || '', disponibilidade: m.disponibilidade });
+    setEditForm({
+      nome: m.nome,
+      documento: m.documento || '',
+      disponibilidade: m.disponibilidade,
+      cnhUrl: m.cnhUrl || '',
+      cnhVencimento: m.cnhVencimento ? m.cnhVencimento.slice(0, 10) : '',
+    });
   }
 
   async function saveEdit() {
@@ -111,6 +121,8 @@ export default function MotoristasPage() {
           nome: editForm.nome.trim(),
           documento: editForm.documento.trim() || null,
           disponibilidade: editForm.disponibilidade,
+          cnhUrl: editForm.cnhUrl.trim() || null,
+          cnhVencimento: editForm.cnhVencimento || null,
         }),
       });
       const json = await res.json().catch(() => null);
@@ -148,7 +160,7 @@ export default function MotoristasPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1100, margin: '20px auto', padding: 16 }}>
+    <div style={{ maxWidth: 1200, margin: '20px auto', padding: 16 }}>
       <h1 style={{ fontSize: 24, fontWeight: 900, marginBottom: 12, color: '#1A4A1A' }}>Motoristas</h1>
 
       <form
@@ -156,7 +168,7 @@ export default function MotoristasPage() {
         style={{
           display: 'grid',
           gap: 8,
-          gridTemplateColumns: '1fr 300px 160px',
+          gridTemplateColumns: '1fr 200px 200px 140px 120px',
           alignItems: 'end',
           marginBottom: 16,
           background: '#ffffff',
@@ -186,6 +198,26 @@ export default function MotoristasPage() {
             style={{ width: '100%', padding: 8, background: '#ffffff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }}
           />
         </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Link CNH (opcional)</label>
+          <input
+            name="cnhUrl"
+            value={form.cnhUrl}
+            onChange={onChange}
+            placeholder="https://..."
+            style={{ width: '100%', padding: 8, background: '#ffffff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }}
+          />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Vencimento CNH</label>
+          <input
+            type="date"
+            name="cnhVencimento"
+            value={form.cnhVencimento}
+            onChange={onChange}
+            style={{ width: '100%', padding: 8, background: '#ffffff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }}
+          />
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input
             type="checkbox"
@@ -197,7 +229,7 @@ export default function MotoristasPage() {
           <label htmlFor="disp" style={{ color: '#64748b', userSelect: 'none' }}>Disponível</label>
         </div>
 
-        <div style={{ gridColumn: '1 / span 3', display: 'flex', gap: 8 }}>
+        <div style={{ gridColumn: '1 / span 5', display: 'flex', gap: 8 }}>
           <button type="submit" style={{ padding: '8px 12px', background: '#2563eb', color: 'white', border: 0, borderRadius: 6 }}>
             Criar motorista
           </button>
@@ -214,6 +246,7 @@ export default function MotoristasPage() {
               <tr style={{ background: '#ffffff', color: '#64748b' }}>
                 <th style={{ textAlign: 'left', ...cellStyle }}>Nome</th>
                 <th style={{ textAlign: 'left', ...cellStyle }}>Documento</th>
+                <th style={{ textAlign: 'left', ...cellStyle }}>CNH</th>
                 <th style={{ textAlign: 'left', ...cellStyle }}>Disponível</th>
                 <th style={{ textAlign: 'left', ...cellStyle }}>Ações</th>
               </tr>
@@ -228,6 +261,22 @@ export default function MotoristasPage() {
                       </td>
                       <td style={cellStyle}>
                         <input value={editForm.documento} onChange={(e) => setEditForm((p) => ({ ...p, documento: e.target.value }))} style={editInput} />
+                      </td>
+                      <td style={cellStyle}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <input
+                            type="date"
+                            value={editForm.cnhVencimento}
+                            onChange={(e) => setEditForm((p) => ({ ...p, cnhVencimento: e.target.value }))}
+                            style={editInput}
+                          />
+                          <input
+                            value={editForm.cnhUrl}
+                            onChange={(e) => setEditForm((p) => ({ ...p, cnhUrl: e.target.value }))}
+                            placeholder="Link CNH"
+                            style={editInput}
+                          />
+                        </div>
                       </td>
                       <td style={cellStyle}>
                         <input
@@ -251,6 +300,39 @@ export default function MotoristasPage() {
                     <>
                       <td style={cellStyle}>{m.nome}</td>
                       <td style={cellStyle}>{m.documento || '-'}</td>
+                      <td style={cellStyle}>
+                        {(() => {
+                          if (!m.cnhVencimento) return '-';
+                          const venc = new Date(m.cnhVencimento);
+                          const now = new Date();
+                          const diffDays = Math.ceil((venc.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                          const dateStr = venc.toLocaleDateString('pt-BR');
+                          let alertColor = '';
+                          let alertText = '';
+                          if (diffDays < 0) {
+                            alertColor = '#ef4444';
+                            alertText = 'VENCIDA';
+                          } else if (diffDays <= 30) {
+                            alertColor = '#ef4444';
+                            alertText = `${diffDays}d restantes`;
+                          } else if (diffDays <= 60) {
+                            alertColor = '#f59e0b';
+                            alertText = `${diffDays}d restantes`;
+                          }
+                          return (
+                            <div>
+                              {m.cnhUrl ? (
+                                <a href={m.cnhUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', textDecoration: 'underline' }}>{dateStr}</a>
+                              ) : (
+                                <span>{dateStr}</span>
+                              )}
+                              {alertText && (
+                                <div style={{ color: alertColor, fontSize: 11, fontWeight: 700 }}>{alertText}</div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td style={cellStyle}>
                         <button
                           onClick={() => toggleDisponibilidade(m)}
@@ -278,7 +360,7 @@ export default function MotoristasPage() {
                 </tr>
               ))}
               {list.length === 0 && (
-                <tr><td colSpan={4} style={{ padding: 16, color: '#64748b', textAlign: 'center' }}>Nenhum motorista cadastrado.</td></tr>
+                <tr><td colSpan={5} style={{ padding: 16, color: '#64748b', textAlign: 'center' }}>Nenhum motorista cadastrado.</td></tr>
               )}
             </tbody>
           </table>

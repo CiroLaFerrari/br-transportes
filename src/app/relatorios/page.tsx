@@ -60,6 +60,39 @@ const fmt = Intl.NumberFormat('pt-BR');
 const fmtDec = Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
 const fmtBRL = Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
+function downloadCSV(filename: string, headers: string[], rows: string[][]) {
+  const BOM = '\uFEFF';
+  const escape = (v: string) => {
+    if (v.includes('"') || v.includes(',') || v.includes('\n') || v.includes(';')) {
+      return `"${v.replace(/"/g, '""')}"`;
+    }
+    return v;
+  };
+  const csvContent =
+    BOM +
+    headers.map(escape).join(';') +
+    '\n' +
+    rows.map((row) => row.map(escape).join(';')).join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function fmtDateBR(dateStr: string | null) {
+  if (!dateStr) return '—';
+  try {
+    return new Date(dateStr).toLocaleDateString('pt-BR');
+  } catch {
+    return '—';
+  }
+}
+
 // ====== Main Page ======
 
 export default function RelatoriosPage() {
@@ -285,6 +318,7 @@ function PatioTab() {
           <select style={{ ...inputStyle, width: 160 }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="ALL">Todos</option>
             <option value="EM_PATIO">EM_PATIO</option>
+            <option value="EM_CARGA">EM_CARGA</option>
             <option value="CARREGADA">CARREGADA</option>
             <option value="EM_TRANSITO">EM_TRANSITO</option>
             <option value="ENTREGUE">ENTREGUE</option>
@@ -293,6 +327,30 @@ function PatioTab() {
         <button onClick={carregar} disabled={loading} style={btnPrimary}>
           {loading ? 'Carregando...' : 'Filtrar'}
         </button>
+        {report && (
+          <button
+            style={btnOutline}
+            onClick={() => {
+              const headers = ['NF', 'Cliente', 'Cidade', 'UF', 'Status', 'Aberto', 'Peso (kg)', 'Valor Frete', 'Data Entrada Pátio', 'Data Saída Pátio', 'Lead Time (dias)'];
+              const rows = report.coletas.map((c) => [
+                c.nf,
+                c.cliente,
+                c.cidade,
+                c.uf,
+                c.status,
+                c.aberto ? 'Sim' : 'Não',
+                c.pesoTotalKg != null ? String(c.pesoTotalKg) : '',
+                c.valorFrete != null ? String(c.valorFrete) : '',
+                fmtDateBR(c.entradaPatioAt),
+                fmtDateBR(c.fimPatioAt),
+                c.leadTimeDias != null ? String(c.leadTimeDias) : '',
+              ]);
+              downloadCSV(`relatorio_detalhado_${dateFrom}_${dateTo}.csv`, headers, rows);
+            }}
+          >
+            Exportar Detalhado CSV
+          </button>
+        )}
       </div>
 
       {erro && <div style={{ color: '#dc2626', fontSize: 13 }}>{erro}</div>}
@@ -365,7 +423,7 @@ function PatioTab() {
           {subTab === 'metricas' && <PatioResumo report={report} />}
           {subTab === 'coletas' && <PatioColetas coletas={report.coletas} />}
           {subTab === 'uf' && <PatioUf data={report.analiseUf} />}
-          {subTab === 'clientes' && <PatioClientes data={report.analiseCliente} />}
+          {subTab === 'clientes' && <PatioClientes data={report.analiseCliente} coletas={report.coletas} dateFrom={dateFrom} dateTo={dateTo} />}
         </>
       )}
     </div>
@@ -515,7 +573,25 @@ function PatioUf({ data }: { data: PatioReport['analiseUf'] }) {
   );
 }
 
-function PatioClientes({ data }: { data: PatioReport['analiseCliente'] }) {
+function PatioClientes({ data, coletas, dateFrom, dateTo }: { data: PatioReport['analiseCliente']; coletas: PatioColeta[]; dateFrom: string; dateTo: string }) {
+  function exportClientCSV(clienteName: string) {
+    const clienteColetas = coletas.filter((c) => c.cliente === clienteName);
+    const headers = ['NF', 'Cidade', 'UF', 'Status', 'Peso (kg)', 'Valor Frete', 'Data Entrada Pátio', 'Data Saída Pátio', 'Lead Time (dias)'];
+    const rows = clienteColetas.map((c) => [
+      c.nf,
+      c.cidade,
+      c.uf,
+      c.status,
+      c.pesoTotalKg != null ? String(c.pesoTotalKg) : '',
+      c.valorFrete != null ? String(c.valorFrete) : '',
+      fmtDateBR(c.entradaPatioAt),
+      fmtDateBR(c.fimPatioAt),
+      c.leadTimeDias != null ? String(c.leadTimeDias) : '',
+    ]);
+    const safeName = clienteName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    downloadCSV(`relatorio_${safeName}_${dateFrom}_${dateTo}.csv`, headers, rows);
+  }
+
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={tableStyle}>
@@ -526,6 +602,7 @@ function PatioClientes({ data }: { data: PatioReport['analiseCliente'] }) {
             <th style={{ ...thStyle, textAlign: 'right' }}>Média (dias)</th>
             <th style={{ ...thStyle, textAlign: 'right' }}>Máx (dias)</th>
             <th style={{ ...thStyle, textAlign: 'right' }}>Frete Total</th>
+            <th style={{ ...thStyle, textAlign: 'center' }}>Exportar</th>
           </tr>
         </thead>
         <tbody>
@@ -538,10 +615,15 @@ function PatioClientes({ data }: { data: PatioReport['analiseCliente'] }) {
               </td>
               <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtDec.format(r.maxDias)}</td>
               <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{fmtBRL.format(r.valorFrete)}</td>
+              <td style={{ ...tdStyle, textAlign: 'center' }}>
+                <button onClick={() => exportClientCSV(r.cliente)} style={{ ...btnOutline, padding: '4px 10px', fontSize: 11 }}>
+                  Exportar CSV
+                </button>
+              </td>
             </tr>
           ))}
           {data.length === 0 && (
-            <tr><td colSpan={5} style={{ ...tdStyle, textAlign: 'center', color: '#94a3b8' }}>Sem dados.</td></tr>
+            <tr><td colSpan={6} style={{ ...tdStyle, textAlign: 'center', color: '#94a3b8' }}>Sem dados.</td></tr>
           )}
         </tbody>
       </table>
@@ -583,7 +665,7 @@ function FaixaLegend({ label, value, color }: { label: string; value: number; co
 }
 
 function statusColor(s: string) {
-  const map: Record<string, string> = { EM_PATIO: '#f59e0b', CARREGADA: '#3b82f6', EM_TRANSITO: '#8b5cf6', ENTREGUE: '#22c55e' };
+  const map: Record<string, string> = { EM_PATIO: '#f59e0b', EM_CARGA: '#6366f1', CARREGADA: '#3b82f6', EM_TRANSITO: '#8b5cf6', ENTREGUE: '#22c55e' };
   return map[s] || '#94a3b8';
 }
 

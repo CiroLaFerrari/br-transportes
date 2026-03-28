@@ -39,24 +39,32 @@ model Motorista {
   nome            String
   documento       String?
   disponibilidade Boolean        @default(true)
+  cnhUrl          String?
+  cnhVencimento   DateTime?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   Planejamento    Planejamento[]
   rotas           Rota[]
+  checkins        CheckinMotorista[]
 }
 
 model Veiculo {
-  id           String         @id @default(cuid())
-  placa        String         @unique
-  capacidadeKg Int
-  capacidadeM3 Float
-  compCm       Int
-  largCm       Int
-  altCm        Int
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  Planejamento Planejamento[]
-  rotas        Rota[]
+  id                      String         @id @default(cuid())
+  placa                   String         @unique
+  capacidadeKg            Int
+  capacidadeM3            Float
+  compCm                  Int
+  largCm                  Int
+  altCm                   Int
+  numEixos                Int?
+  licenciamentoUrl        String?
+  licenciamentoVencimento DateTime?
+  documentosUrl           String?
+  documentosVencimento    DateTime?
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+  Planejamento            Planejamento[]
+  rotas                   Rota[]
 }
 
 model Produto {
@@ -78,6 +86,7 @@ model Produto {
   tipoEmbalagem  TipoEmbalagem?
   volumeM3       Float?
   pesoKg         Float?
+  precoUnitario  Float?
   componentes    Componente[]
   itemsColetados ItemColetado[] @relation("ProdutoToItemColetado")
 }
@@ -339,8 +348,24 @@ model Planejamento {
   @@index([planStartAt, planEndAt])
 }
 
+model CheckinMotorista {
+  id            String    @id @default(cuid())
+  motoristaId   String
+  data          DateTime  @default(now())
+  localizacao   String
+  observacao    String?
+  registradoPor String?
+  createdAt     DateTime  @default(now())
+
+  motorista     Motorista @relation(fields: [motoristaId], references: [id], onDelete: Cascade)
+
+  @@index([motoristaId, data])
+  @@index([data])
+}
+
 enum ColetaStatus {
   EM_PATIO
+  EM_CARGA
   CARREGADA
   EM_TRANSITO
   ENTREGUE

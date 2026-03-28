@@ -15,6 +15,8 @@ export async function GET(req: NextRequest) {
         nome: true,
         documento: true,
         disponibilidade: true,
+        cnhUrl: true,
+        cnhVencimento: true,
         createdAt: true,
       },
     });
@@ -34,13 +36,15 @@ export async function POST(req: NextRequest) {
     const documento = body?.documento ? String(body.documento).trim() : null;
     const disponibilidade =
       body?.disponibilidade === undefined ? true : Boolean(body.disponibilidade);
+    const cnhUrl = body?.cnhUrl ? String(body.cnhUrl).trim() : null;
+    const cnhVencimento = body?.cnhVencimento ? new Date(body.cnhVencimento) : null;
 
     if (!nome) {
       return NextResponse.json({ error: 'Nome é obrigatório' }, { status: 400 });
     }
 
     const created = await prisma.motorista.create({
-      data: { nome, documento, disponibilidade },
+      data: { nome, documento, disponibilidade, cnhUrl, cnhVencimento },
       select: { id: true },
     });
 

@@ -88,6 +88,17 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       data.descricao = descricao;
     }
 
+    if (body.precoUnitario !== undefined) {
+      const n = toNumOrNull(body.precoUnitario);
+      if (n !== null && !Number.isFinite(n)) {
+        return NextResponse.json(
+          { error: 'precoUnitario inválido.' },
+          { status: 400 },
+        );
+      }
+      data.precoUnitario = n;
+    }
+
     if (body.pesoKg !== undefined) {
       const n = toNumOrNull(body.pesoKg);
       if (n !== null && !Number.isFinite(n)) {

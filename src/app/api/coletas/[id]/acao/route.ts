@@ -136,6 +136,46 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       return json({ ok: true, action, coletaId, updated });
     }
 
+    if (action === 'EM_CARGA') {
+      const updated = await prisma.$transaction(async (tx: any) => {
+        return await tx.coleta.update({
+          where: { id: coletaId },
+          data: { status: 'EM_CARGA' },
+          select: { id: true, status: true },
+        });
+      });
+
+      await createEventOnce({
+        etiqueta: `COLETA:${coletaId}`,
+        status: 'EM_CARGA_DECL',
+        note: note ?? 'Coleta marcada como em carga',
+      });
+
+      return json({ ok: true, action, coletaId, updated });
+    }
+
+    if (action === 'EM_TRANSITO') {
+      const updated = await prisma.$transaction(async (tx: any) => {
+        const data: any = { status: 'EM_TRANSITO' };
+        // set embarqueAt and fimPatioAt if not already set
+        if (!coleta.embarqueAt) data.embarqueAt = now;
+        if (!coleta.fimPatioAt) data.fimPatioAt = now;
+        return await tx.coleta.update({
+          where: { id: coletaId },
+          data,
+          select: { id: true, status: true, embarqueAt: true, fimPatioAt: true },
+        });
+      });
+
+      await createEventOnce({
+        etiqueta: `COLETA:${coletaId}`,
+        status: 'EM_TRANSITO_DECL',
+        note: note ?? 'Coleta marcada como em trânsito',
+      });
+
+      return json({ ok: true, action, coletaId, updated });
+    }
+
     if (action === 'ENTREGUE') {
       const updated = await prisma.$transaction(async (tx: any) => {
         return await safeUpdateEntregue(tx, coletaId, now);

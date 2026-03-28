@@ -19,6 +19,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (body?.disponibilidade !== undefined) {
       data.disponibilidade = Boolean(body.disponibilidade);
     }
+    if (body?.cnhUrl !== undefined) {
+      data.cnhUrl = body.cnhUrl ? String(body.cnhUrl).trim() : null;
+    }
+    if (body?.cnhVencimento !== undefined) {
+      data.cnhVencimento = body.cnhVencimento ? new Date(body.cnhVencimento) : null;
+    }
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: 'Nenhum campo informado.' }, { status: 400 });
