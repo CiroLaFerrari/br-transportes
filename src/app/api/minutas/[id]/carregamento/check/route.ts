@@ -34,13 +34,18 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     // Get or create checklist
     let checklist = await prisma.carregamentoChecklist.findUnique({
       where: { minutaId },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     if (!checklist) {
       checklist = await prisma.carregamentoChecklist.create({
         data: { minutaId, status: 'ABERTO' },
-        select: { id: true },
+        select: { id: true, status: true },
       });
+    }
+
+    // Block changes if finalized
+    if (checklist.status === 'FINALIZADO') {
+      return json({ ok: false, error: 'Checklist já finalizado. Reabra para editar.' }, 400);
     }
 
     // Find volume by etiqueta in this minuta

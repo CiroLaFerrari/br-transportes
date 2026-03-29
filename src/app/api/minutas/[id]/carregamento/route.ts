@@ -128,6 +128,11 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     const checklist = await ensureChecklist(minutaId);
     const data: any = {};
 
+    // Block edits if already finalized (except reopening)
+    if (checklist.status === 'FINALIZADO' && body.status !== 'ABERTO') {
+      return json({ ok: false, error: 'Checklist já finalizado. Reabra para editar.' }, 400);
+    }
+
     if (body.status !== undefined) {
       const s = String(body.status || '').trim().toUpperCase();
       if (!['ABERTO', 'FINALIZADO'].includes(s)) {
