@@ -233,6 +233,16 @@ export default function OperacaoPage() {
     }
   }
 
+  const motoristasEmViagem = useMemo(() => {
+    const idsEmRota = new Set<string>();
+    for (const r of rotas) {
+      if ((r.status === 'EM_ROTA' || r.status === 'ATRIBUIDA') && r.driverId) {
+        idsEmRota.add(r.driverId);
+      }
+    }
+    return allMotoristas.filter(m => idsEmRota.has(m.id));
+  }, [rotas, allMotoristas]);
+
   const checkinRows = useMemo(() => {
     const latest = new Map<string, Checkin>();
     for (const c of checkins) {
@@ -241,7 +251,7 @@ export default function OperacaoPage() {
         latest.set(c.motoristaId, c);
       }
     }
-    return allMotoristas.map((m) => {
+    return motoristasEmViagem.map((m) => {
       const ck = latest.get(m.id);
       return {
         motoristaId: m.id,
@@ -251,7 +261,7 @@ export default function OperacaoPage() {
         observacao: ck?.observacao ?? null,
       };
     });
-  }, [allMotoristas, checkins]);
+  }, [motoristasEmViagem, checkins]);
 
   useEffect(() => {
     void carregarTudo();
@@ -322,7 +332,7 @@ export default function OperacaoPage() {
             {checkinOpen ? '\u25BC' : '\u25B6'} Localizacao dos Motoristas
           </span>
           <span style={{ fontSize: 12, color: '#64748b' }}>
-            ({checkinRows.filter((r) => r.localizacao).length}/{checkinRows.length} com registro hoje)
+            ({checkinRows.filter((r) => r.localizacao).length}/{checkinRows.length} motoristas em viagem)
           </span>
         </div>
 
@@ -336,7 +346,7 @@ export default function OperacaoPage() {
                 style={{ ...selectStyle, width: 200 }}
               >
                 <option value="">-- Motorista --</option>
-                {allMotoristas.map((m) => (
+                {motoristasEmViagem.map((m) => (
                   <option key={m.id} value={m.id}>{m.nome}</option>
                 ))}
               </select>

@@ -5,6 +5,7 @@ import { prisma } from '../../../../../lib/prisma';
 const ALLOW: Record<string, string[]> = {
   PLANEJADA: ['ATRIBUIDA', 'CANCELADA'],
   ATRIBUIDA: ['EM_ROTA', 'CANCELADA'],
+  EM_CARREGAMENTO: ['EM_ROTA', 'CANCELADA'],
   EM_ROTA: ['CONCLUIDA', 'CANCELADA'],
   CONCLUIDA: [],
   CANCELADA: [],
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const next = String(b.status ?? '').toUpperCase();
     if (!next) return NextResponse.json({ error: 'Informe status' }, { status: 400 });
 
-    const rota = await prisma.routePlan.findUnique({ where: { id } });
+    const rota = await prisma.rota.findUnique({ where: { id } });
     if (!rota) return NextResponse.json({ error: 'Rota não encontrada' }, { status: 404 });
 
     const allow = ALLOW[rota.status] ?? [];
@@ -26,16 +27,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     const data: any = { status: next };
-    if (next === 'EM_ROTA' && !rota.startedAt) data.startedAt = new Date();
-    if (next === 'CONCLUIDA' && !rota.finishedAt) data.finishedAt = new Date();
 
-    const updated = await prisma.routePlan.update({
+    const updated = await prisma.rota.update({
       where: { id: rota.id },
       data,
-      include: { stops: { orderBy: { order: 'asc' } } }
+      include: { paradas: { orderBy: { ordem: 'asc' } } },
     });
     return NextResponse.json(updated);
-  } catch {
+  } catch (e: any) {
+    console.error('POST /api/rotas/[id]/status error:', e);
     return NextResponse.json({ error: 'Erro ao atualizar status da rota' }, { status: 500 });
   }
 }

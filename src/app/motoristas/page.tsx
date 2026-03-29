@@ -319,37 +319,43 @@ export default function MotoristasPage() {
                       <td style={cellStyle}>{m.nome}</td>
                       <td style={cellStyle}>{m.documento || '-'}</td>
                       <td style={cellStyle}>
-                        {(() => {
-                          if (!m.cnhVencimento) return '-';
-                          const venc = new Date(m.cnhVencimento);
-                          const now = new Date();
-                          const diffDays = Math.ceil((venc.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-                          const dateStr = venc.toLocaleDateString('pt-BR');
-                          let alertColor = '';
-                          let alertText = '';
-                          if (diffDays < 0) {
-                            alertColor = '#ef4444';
-                            alertText = 'VENCIDA';
-                          } else if (diffDays <= 30) {
-                            alertColor = '#ef4444';
-                            alertText = `${diffDays}d restantes`;
-                          } else if (diffDays <= 90) {
-                            alertColor = '#f59e0b';
-                            alertText = `${diffDays}d restantes`;
-                          }
-                          return (
-                            <div>
-                              {m.cnhUrl ? (
-                                <a href={m.cnhUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', textDecoration: 'underline' }}>{dateStr}</a>
-                              ) : (
-                                <span>{dateStr}</span>
-                              )}
-                              {alertText && (
-                                <div style={{ color: alertColor, fontSize: 11, fontWeight: 700 }}>{alertText}</div>
-                              )}
+                        <div>
+                          {m.cnhUrl && (
+                            <div style={{ marginBottom: 4 }}>
+                              <a href={m.cnhUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', fontSize: 12, fontWeight: 600, textDecoration: 'none', padding: '2px 8px', background: '#dbeafe', borderRadius: 4 }}>
+                                Ver CNH
+                              </a>
                             </div>
-                          );
-                        })()}
+                          )}
+                          {m.cnhVencimento ? (() => {
+                            const venc = new Date(m.cnhVencimento);
+                            const now = new Date();
+                            const diffDays = Math.ceil((venc.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                            const dateStr = venc.toLocaleDateString('pt-BR');
+                            let alertColor = '';
+                            let alertText = '';
+                            if (diffDays < 0) {
+                              alertColor = '#ef4444';
+                              alertText = 'VENCIDA';
+                            } else if (diffDays <= 30) {
+                              alertColor = '#ef4444';
+                              alertText = `${diffDays}d restantes`;
+                            } else if (diffDays <= 90) {
+                              alertColor = '#f59e0b';
+                              alertText = `${diffDays}d restantes`;
+                            }
+                            return (
+                              <>
+                                <span style={{ fontSize: 13 }}>{dateStr}</span>
+                                {alertText && (
+                                  <div style={{ color: alertColor, fontSize: 11, fontWeight: 700 }}>{alertText}</div>
+                                )}
+                              </>
+                            );
+                          })() : (
+                            !m.cnhUrl && <span style={{ color: '#94a3b8' }}>-</span>
+                          )}
+                        </div>
                       </td>
                       <td style={cellStyle}>
                         <button

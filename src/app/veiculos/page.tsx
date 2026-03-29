@@ -381,6 +381,7 @@ export default function VeiculosPage() {
                 <th style={{ textAlign: 'left', ...cellStyle }}>Larg.</th>
                 <th style={{ textAlign: 'left', ...cellStyle }}>Alt.</th>
                 <th style={{ textAlign: 'left', ...cellStyle }}>Eixos</th>
+                <th style={{ textAlign: 'left', ...cellStyle }}>Docs</th>
                 <th style={{ textAlign: 'left', ...cellStyle }}>Alertas</th>
                 <th style={{ textAlign: 'left', ...cellStyle }}>Ações</th>
               </tr>
@@ -411,6 +412,7 @@ export default function VeiculosPage() {
                       <td style={cellStyle}>
                         <input value={editForm.numEixos} onChange={(e) => setEditForm((p) => ({ ...p, numEixos: e.target.value }))} style={editInput} inputMode="numeric" />
                       </td>
+                      <td style={cellStyle}></td>
                       <td style={cellStyle}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}>
                           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -454,15 +456,27 @@ export default function VeiculosPage() {
                       <td style={cellStyle}>{v.altCm}</td>
                       <td style={cellStyle}>{v.numEixos ?? '—'}</td>
                       <td style={cellStyle}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          {docExpiryBadge(v.licenciamentoVencimento, v.documentosVencimento) || (
-                            <span style={{ color: '#94a3b8', fontSize: 12 }}>OK</span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {v.licenciamentoUrl ? (
+                            <a href={v.licenciamentoUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', textDecoration: 'none', padding: '2px 8px', background: '#dbeafe', borderRadius: 4, display: 'inline-block' }}>
+                              Licenciamento
+                            </a>
+                          ) : (
+                            <span style={{ fontSize: 11, color: '#94a3b8' }}>Sem lic.</span>
                           )}
-                          <div style={{ display: 'flex', gap: 4 }}>
-                            {v.licenciamentoUrl && <a href={v.licenciamentoUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#2563eb' }}>Lic.</a>}
-                            {v.documentosUrl && <a href={v.documentosUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#2563eb' }}>Doc.</a>}
-                          </div>
+                          {v.documentosUrl ? (
+                            <a href={v.documentosUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', textDecoration: 'none', padding: '2px 8px', background: '#dbeafe', borderRadius: 4, display: 'inline-block' }}>
+                              Documentos
+                            </a>
+                          ) : (
+                            <span style={{ fontSize: 11, color: '#94a3b8' }}>Sem doc.</span>
+                          )}
                         </div>
+                      </td>
+                      <td style={cellStyle}>
+                        {docExpiryBadge(v.licenciamentoVencimento, v.documentosVencimento) || (
+                          <span style={{ color: '#94a3b8', fontSize: 12 }}>OK</span>
+                        )}
                       </td>
                       <td style={cellStyle}>
                         <div style={{ display: 'flex', gap: 4 }}>
@@ -480,7 +494,7 @@ export default function VeiculosPage() {
               ))}
               {list.length === 0 && (
                 <tr>
-                  <td colSpan={9} style={{ padding: 16, color: '#64748b', textAlign: 'center' }}>
+                  <td colSpan={10} style={{ padding: 16, color: '#64748b', textAlign: 'center' }}>
                     Nenhum veículo cadastrado.
                   </td>
                 </tr>

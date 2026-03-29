@@ -382,9 +382,11 @@ enum ColetaStatus {
 
 enum RotaStatus {
   PLANEJADA
+  ATRIBUIDA
   EM_CARREGAMENTO
   EM_ROTA
   CONCLUIDA
+  CANCELADA
 }
 
 enum RouteStatus {

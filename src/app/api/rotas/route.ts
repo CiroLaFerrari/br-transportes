@@ -29,6 +29,8 @@ export async function GET(req: NextRequest) {
           veiculoId: true,
           createdAt: true,
           updatedAt: true,
+          motorista: { select: { id: true, nome: true } },
+          veiculo: { select: { id: true, placa: true } },
           paradas: {
             select: {
               id: true,
@@ -53,11 +55,15 @@ export async function GET(req: NextRequest) {
         kmTotal: r.kmTotal,
         freteTotal: r.freteTotal,
         motoristaId: r.motoristaId,
+        vehicleId: r.veiculoId,
+        driverId: r.motoristaId,
         veiculoId: r.veiculoId,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
         totalParadas,
         entregues,
+        driver: r.motorista ? { id: r.motorista.id, name: r.motorista.nome } : null,
+        vehicle: r.veiculo ? { id: r.veiculo.id, plate: r.veiculo.placa } : null,
         paradas: r.paradas.map(p => ({
           id: p.id,
           statusExec: p.statusExec,
