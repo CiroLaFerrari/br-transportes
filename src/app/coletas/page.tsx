@@ -23,6 +23,15 @@ type Coleta = {
 
 type Cliente = { id: string; razao: string };
 
+type Produto = {
+  id: string;
+  code: string;
+  descricao: string;
+  pesoKg: number | null;
+  precoUnitario: number | null;
+  volumeM3: number | null;
+};
+
 type MetricasResp =
   | {
       ok?: boolean;
@@ -58,6 +67,8 @@ function pickM3(row: any): number {
 export default function ColetasPage() {
   const [list, setList] = useState<Coleta[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [itensColeta, setItensColeta] = useState<Array<{ produtoId: string; quantidade: number }>>([]);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -177,9 +188,18 @@ export default function ColetasPage() {
     }
   }
 
+  async function loadProdutos() {
+    try {
+      const res = await fetch('/api/produtos?take=200', { cache: 'no-store' });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.items) setProdutos(json.items);
+    } catch {}
+  }
+
   useEffect(() => {
     void loadColetas(1);
     void loadClientes();
+    void loadProdutos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -187,6 +207,28 @@ export default function ColetasPage() {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
   };
+
+  const totaisItens = useMemo(() => {
+    let peso = 0, valor = 0, volume = 0;
+    for (const item of itensColeta) {
+      const prod = produtos.find(p => p.id === item.produtoId);
+      if (!prod) continue;
+      peso += (prod.pesoKg ?? 0) * item.quantidade;
+      valor += (prod.precoUnitario ?? 0) * item.quantidade;
+      volume += (prod.volumeM3 ?? 0) * item.quantidade;
+    }
+    return { peso, valor, volume };
+  }, [itensColeta, produtos]);
+
+  useEffect(() => {
+    if (itensColeta.length > 0) {
+      setForm(prev => ({
+        ...prev,
+        pesoTotalKg: totaisItens.peso > 0 ? String(totaisItens.peso) : prev.pesoTotalKg,
+        valorFrete: totaisItens.valor > 0 ? String(totaisItens.valor) : prev.valorFrete,
+      }));
+    }
+  }, [totaisItens]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -212,6 +254,7 @@ export default function ColetasPage() {
           clienteId: form.clienteId.trim(),
           coletador: form.coletador.trim() || undefined,
           pedido: form.pedido.trim() || undefined,
+          itens: itensColeta.length > 0 ? itensColeta : undefined,
         }),
       });
 
@@ -222,6 +265,7 @@ export default function ColetasPage() {
       }
 
       setForm({ nf: '', cidade: '', uf: '', valorFrete: '', pesoTotalKg: '', clienteId: '', coletador: '', pedido: '' });
+      setItensColeta([]);
       await loadColetas(1);
       setMsg('Coleta criada com sucesso.');
     } catch {
@@ -385,7 +429,124 @@ export default function ColetasPage() {
         </div>
       </div>
 
-      {/* FORM CRIAÇÃO */}
+      {/* PRODUTOS DA COLETA */}
+      <div style={{
+        marginBottom: 12,
+        background: '#ffffff',
+        padding: 12,
+        borderRadius: 8,
+        border: '1px solid #e2e8f0',
+      }}>
+        <label style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#1A4A1A', marginBottom: 8 }}>
+          Produtos da Coleta
+        </label>
+
+        {/* Add product row */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'end', marginBottom: 8 }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Produto</label>
+            <select
+              id="addProdutoSelect"
+              style={{ width: '100%', padding: 8, background: '#ffffff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }}
+            >
+              <option value="">Selecione um produto...</option>
+              {produtos.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.code} — {p.descricao} {p.pesoKg ? `(${p.pesoKg}kg)` : ''} {p.precoUnitario ? `R$${p.precoUnitario}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style={{ width: 100 }}>
+            <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Qtd</label>
+            <input
+              id="addProdutoQtd"
+              type="number"
+              min={1}
+              defaultValue={1}
+              style={{ width: '100%', padding: 8, background: '#ffffff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const sel = (document.getElementById('addProdutoSelect') as HTMLSelectElement)?.value;
+              const qtd = Number((document.getElementById('addProdutoQtd') as HTMLInputElement)?.value) || 1;
+              if (!sel) return;
+              setItensColeta(prev => {
+                const existing = prev.find(i => i.produtoId === sel);
+                if (existing) return prev.map(i => i.produtoId === sel ? { ...i, quantidade: i.quantidade + qtd } : i);
+                return [...prev, { produtoId: sel, quantidade: qtd }];
+              });
+            }}
+            style={{ padding: '8px 12px', background: '#2563eb', color: 'white', border: 0, borderRadius: 6, whiteSpace: 'nowrap' }}
+          >
+            + Adicionar
+          </button>
+        </div>
+
+        {/* Selected products list */}
+        {itensColeta.length > 0 && (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 8 }}>
+            <thead>
+              <tr style={{ background: '#f8fafc' }}>
+                <th style={{ textAlign: 'left', padding: '4px 8px', borderBottom: '1px solid #e2e8f0' }}>Produto</th>
+                <th style={{ textAlign: 'center', padding: '4px 8px', borderBottom: '1px solid #e2e8f0' }}>Qtd</th>
+                <th style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #e2e8f0' }}>Peso (kg)</th>
+                <th style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #e2e8f0' }}>Valor (R$)</th>
+                <th style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #e2e8f0' }}>Volume (m3)</th>
+                <th style={{ padding: '4px 8px', borderBottom: '1px solid #e2e8f0' }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {itensColeta.map(item => {
+                const prod = produtos.find(p => p.id === item.produtoId);
+                return (
+                  <tr key={item.produtoId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '4px 8px' }}>{prod ? `${prod.code} — ${prod.descricao}` : item.produtoId}</td>
+                    <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                      <input
+                        type="number"
+                        min={1}
+                        value={item.quantidade}
+                        onChange={(e) => {
+                          const q = Math.max(1, Number(e.target.value) || 1);
+                          setItensColeta(prev => prev.map(i => i.produtoId === item.produtoId ? { ...i, quantidade: q } : i));
+                        }}
+                        style={{ width: 60, padding: '2px 4px', textAlign: 'center', border: '1px solid #d1d5db', borderRadius: 4 }}
+                      />
+                    </td>
+                    <td style={{ padding: '4px 8px', textAlign: 'right' }}>{((prod?.pesoKg ?? 0) * item.quantidade).toFixed(2)}</td>
+                    <td style={{ padding: '4px 8px', textAlign: 'right' }}>{((prod?.precoUnitario ?? 0) * item.quantidade).toFixed(2)}</td>
+                    <td style={{ padding: '4px 8px', textAlign: 'right' }}>{((prod?.volumeM3 ?? 0) * item.quantidade).toFixed(4)}</td>
+                    <td style={{ padding: '4px 8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setItensColeta(prev => prev.filter(i => i.produtoId !== item.produtoId))}
+                        style={{ padding: '2px 6px', background: '#ef4444', color: 'white', border: 0, borderRadius: 4, fontSize: 11 }}
+                      >
+                        X
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ fontWeight: 700, borderTop: '2px solid #e2e8f0' }}>
+                <td style={{ padding: '4px 8px' }}>Total</td>
+                <td></td>
+                <td style={{ padding: '4px 8px', textAlign: 'right' }}>{totaisItens.peso.toFixed(2)} kg</td>
+                <td style={{ padding: '4px 8px', textAlign: 'right' }}>R$ {totaisItens.valor.toFixed(2)}</td>
+                <td style={{ padding: '4px 8px', textAlign: 'right' }}>{totaisItens.volume.toFixed(4)} m3</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
+      </div>
+
+      {/* FORM CRIACAO */}
       <form
         onSubmit={onSubmit}
         style={{

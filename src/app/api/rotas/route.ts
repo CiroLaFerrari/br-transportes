@@ -33,7 +33,10 @@ export async function GET(req: NextRequest) {
             select: {
               id: true,
               statusExec: true,
+              label: true,
+              ordem: true,
             },
+            orderBy: { ordem: 'asc' },
           },
         },
       }),
@@ -55,6 +58,13 @@ export async function GET(req: NextRequest) {
         updatedAt: r.updatedAt,
         totalParadas,
         entregues,
+        paradas: r.paradas.map(p => ({
+          id: p.id,
+          statusExec: p.statusExec,
+          destination: p.label,
+          order: p.ordem,
+          status: p.statusExec,
+        })),
       };
     });
 

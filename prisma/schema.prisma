@@ -348,6 +348,15 @@ model Planejamento {
   @@index([planStartAt, planEndAt])
 }
 
+model Arquivo {
+  id        String   @id @default(cuid())
+  nome      String
+  mimeType  String
+  tamanho   Int
+  conteudo  String   @db.Text
+  createdAt DateTime @default(now())
+}
+
 model CheckinMotorista {
   id            String    @id @default(cuid())
   motoristaId   String

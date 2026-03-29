@@ -291,14 +291,28 @@ export default function VeiculosPage() {
 
         {/* Row 2: URL and date fields */}
         <div style={{ gridColumn: '1 / span 3' }}>
-          <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Link Licenciamento</label>
-          <input
-            name="licenciamentoUrl"
-            value={form.licenciamentoUrl}
-            onChange={onChange}
-            placeholder="https://..."
-            style={{ width: '100%', padding: 8, background: '#ffffff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }}
-          />
+          <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Licenciamento (PDF)</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="file"
+              accept=".pdf,image/*"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const fd = new FormData();
+                fd.append('file', file);
+                try {
+                  const res = await fetch('/api/upload', { method: 'POST', body: fd });
+                  const j = await res.json();
+                  if (!res.ok) { setMsg(j?.error || 'Falha no upload'); return; }
+                  setForm(prev => ({ ...prev, licenciamentoUrl: j.url }));
+                  setMsg('Licenciamento enviado.');
+                } catch { setMsg('Falha no upload'); }
+              }}
+              style={{ fontSize: 13 }}
+            />
+            {form.licenciamentoUrl && <a href={form.licenciamentoUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#2563eb' }}>Ver arquivo</a>}
+          </div>
         </div>
         <div>
           <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Venc. Licenciamento</label>
@@ -311,14 +325,28 @@ export default function VeiculosPage() {
           />
         </div>
         <div style={{ gridColumn: '5 / span 2' }}>
-          <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Link Documentos</label>
-          <input
-            name="documentosUrl"
-            value={form.documentosUrl}
-            onChange={onChange}
-            placeholder="https://..."
-            style={{ width: '100%', padding: 8, background: '#ffffff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }}
-          />
+          <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Documentos (PDF)</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="file"
+              accept=".pdf,image/*"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const fd = new FormData();
+                fd.append('file', file);
+                try {
+                  const res = await fetch('/api/upload', { method: 'POST', body: fd });
+                  const j = await res.json();
+                  if (!res.ok) { setMsg(j?.error || 'Falha no upload'); return; }
+                  setForm(prev => ({ ...prev, documentosUrl: j.url }));
+                  setMsg('Documento enviado.');
+                } catch { setMsg('Falha no upload'); }
+              }}
+              style={{ fontSize: 13 }}
+            />
+            {form.documentosUrl && <a href={form.documentosUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#2563eb' }}>Ver arquivo</a>}
+          </div>
         </div>
         <div>
           <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Venc. Documentos</label>
@@ -385,9 +413,23 @@ export default function VeiculosPage() {
                       </td>
                       <td style={cellStyle}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}>
-                          <input value={editForm.licenciamentoUrl} onChange={(e) => setEditForm((p) => ({ ...p, licenciamentoUrl: e.target.value }))} style={editInput} placeholder="Link Lic." />
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            <input type="file" accept=".pdf,image/*" onChange={async (e) => {
+                              const file = e.target.files?.[0]; if (!file) return;
+                              const fd = new FormData(); fd.append('file', file);
+                              try { const res = await fetch('/api/upload', { method: 'POST', body: fd }); const j = await res.json(); if (res.ok) setEditForm(p => ({ ...p, licenciamentoUrl: j.url })); } catch {}
+                            }} style={{ ...editInput, border: 'none', padding: 0, fontSize: 11 }} />
+                            {editForm.licenciamentoUrl && <a href={editForm.licenciamentoUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: '#2563eb' }}>Ver</a>}
+                          </div>
                           <input value={editForm.licenciamentoVencimento} onChange={(e) => setEditForm((p) => ({ ...p, licenciamentoVencimento: e.target.value }))} style={editInput} type="date" title="Venc. Licenciamento" />
-                          <input value={editForm.documentosUrl} onChange={(e) => setEditForm((p) => ({ ...p, documentosUrl: e.target.value }))} style={editInput} placeholder="Link Doc." />
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            <input type="file" accept=".pdf,image/*" onChange={async (e) => {
+                              const file = e.target.files?.[0]; if (!file) return;
+                              const fd = new FormData(); fd.append('file', file);
+                              try { const res = await fetch('/api/upload', { method: 'POST', body: fd }); const j = await res.json(); if (res.ok) setEditForm(p => ({ ...p, documentosUrl: j.url })); } catch {}
+                            }} style={{ ...editInput, border: 'none', padding: 0, fontSize: 11 }} />
+                            {editForm.documentosUrl && <a href={editForm.documentosUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: '#2563eb' }}>Ver</a>}
+                          </div>
                           <input value={editForm.documentosVencimento} onChange={(e) => setEditForm((p) => ({ ...p, documentosVencimento: e.target.value }))} style={editInput} type="date" title="Venc. Documentos" />
                         </div>
                       </td>
@@ -412,9 +454,15 @@ export default function VeiculosPage() {
                       <td style={cellStyle}>{v.altCm}</td>
                       <td style={cellStyle}>{v.numEixos ?? '—'}</td>
                       <td style={cellStyle}>
-                        {docExpiryBadge(v.licenciamentoVencimento, v.documentosVencimento) || (
-                          <span style={{ color: '#94a3b8', fontSize: 12 }}>OK</span>
-                        )}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          {docExpiryBadge(v.licenciamentoVencimento, v.documentosVencimento) || (
+                            <span style={{ color: '#94a3b8', fontSize: 12 }}>OK</span>
+                          )}
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            {v.licenciamentoUrl && <a href={v.licenciamentoUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#2563eb' }}>Lic.</a>}
+                            {v.documentosUrl && <a href={v.documentosUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#2563eb' }}>Doc.</a>}
+                          </div>
+                        </div>
                       </td>
                       <td style={cellStyle}>
                         <div style={{ display: 'flex', gap: 4 }}>

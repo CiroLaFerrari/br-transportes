@@ -167,7 +167,7 @@ export default function OperacaoPage() {
           vehicle: r?.vehicle
             ? { id: String(r.vehicle.id || ''), plate: String(r.vehicle.plate || r.vehicle.placa || '').toUpperCase(), model: r.vehicle.model ?? null }
             : null,
-          stops: Array.isArray(r?.stops) ? r.stops : Array.isArray(r?.paradas) ? r.paradas : [],
+          stops: Array.isArray(r?.stops) ? r.stops.map((s: any) => ({ ...s, destination: s.destination || s.label || '' })) : Array.isArray(r?.paradas) ? r.paradas.map((s: any) => ({ ...s, destination: s.destination || s.label || '' })) : [],
         }))
         .filter((x) => x.id);
 
@@ -414,15 +414,17 @@ export default function OperacaoPage() {
               {/* Header */}
               <div style={{ marginBottom: 16 }}>
                 {(() => {
-                  const stopsArr = Array.isArray(r.stops) ? r.stops : [];
-                  const finalDest = stopsArr.length > 0 ? stopsArr[stopsArr.length - 1].destination : null;
-                  const stopsCount = stopsArr.length;
+                  const stopsArr = Array.isArray(r.stops) ? r.stops.sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0)) : [];
+                  const firstStop = stopsArr.length > 0 ? stopsArr[0].destination : null;
+                  const lastStop = stopsArr.length > 1 ? stopsArr[stopsArr.length - 1].destination : null;
+                  const midStops = stopsArr.length > 2 ? stopsArr.length - 2 : 0;
                   return (
                     <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A4A1A', margin: '0 0 8px 0' }}>
-                      {r.origin || 'Origem'} → {finalDest || 'Destino'}
-                      {stopsCount > 1 && (
+                      {firstStop || 'Sem paradas'}
+                      {lastStop ? ` → ${lastStop}` : ''}
+                      {midStops > 0 && (
                         <span style={{ fontSize: 13, fontWeight: 400, color: '#64748b', marginLeft: 8 }}>
-                          (+{stopsCount} paradas)
+                          (+{midStops} paradas)
                         </span>
                       )}
                     </h3>

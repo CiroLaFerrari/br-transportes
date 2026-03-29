@@ -30,6 +30,12 @@ type DashboardData = {
     inTransit: number;
     done: number;
   };
+  alertasCnh?: Array<{
+    id: string;
+    nome: string;
+    cnhVencimento: string;
+    diasRestantes: number;
+  }>;
   recentColetas: Array<{
     id: string;
     nf: string;
@@ -40,6 +46,12 @@ type DashboardData = {
     valorFrete: number | null;
     leadTimeDias: number | null;
     Cliente: { razao: string } | null;
+  }>;
+  alertasCnh?: Array<{
+    id: string;
+    nome: string;
+    cnhVencimento: string;
+    diasRestantes: number;
   }>;
 };
 
@@ -161,6 +173,50 @@ export default function HomePage() {
           <a href="/patio" style={{ color: '#dc2626', textDecoration: 'underline' }}>
             Ver no pátio
           </a>
+        </div>
+      )}
+
+      {/* CNH Expiry Alerts */}
+      {data.alertasCnh && data.alertasCnh.length > 0 && (
+        <div
+          style={{
+            padding: '12px 16px',
+            marginBottom: 20,
+            borderRadius: 8,
+            background: '#fffbeb',
+            border: '1px solid #fde68a',
+            color: '#92400e',
+            fontSize: 13,
+          }}
+        >
+          <b>CNH - Alerta de Vencimento:</b>
+          <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {data.alertasCnh.map((m) => (
+              <div key={m.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontWeight: 600 }}>{m.nome}</span>
+                <span>—</span>
+                <span>
+                  {m.diasRestantes < 0 ? (
+                    <span style={{ color: '#dc2626', fontWeight: 700 }}>VENCIDA h{'\u00e1'} {Math.abs(m.diasRestantes)} dias</span>
+                  ) : m.diasRestantes === 0 ? (
+                    <span style={{ color: '#dc2626', fontWeight: 700 }}>Vence HOJE</span>
+                  ) : (
+                    <span style={{ color: m.diasRestantes <= 30 ? '#dc2626' : '#f59e0b', fontWeight: 700 }}>
+                      {m.diasRestantes} dias restantes
+                    </span>
+                  )}
+                </span>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                  (venc: {new Date(m.cnhVencimento).toLocaleDateString('pt-BR')})
+                </span>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 6 }}>
+            <a href="/motoristas" style={{ color: '#92400e', textDecoration: 'underline' }}>
+              Ver motoristas
+            </a>
+          </div>
         </div>
       )}
 

@@ -167,6 +167,21 @@ export async function POST(req: NextRequest) {
       select: { id: true, nf: true, cidade: true, uf: true, valorFrete: true, pesoTotalKg: true, clienteId: true, status: true as any },
     });
 
+    // Create ItemColetado records if items provided
+    const itens = Array.isArray(body?.itens) ? body.itens : [];
+    if (itens.length > 0) {
+      const itemsData = itens
+        .filter((i: any) => i?.produtoId && Number.isInteger(Number(i?.quantidade)) && Number(i?.quantidade) > 0)
+        .map((i: any) => ({
+          coletaId: created.id,
+          produtoId: String(i.produtoId),
+          quantidade: Number(i.quantidade),
+        }));
+      if (itemsData.length > 0) {
+        await prisma.itemColetado.createMany({ data: itemsData });
+      }
+    }
+
     return NextResponse.json({ ok: true, created }, { status: 201 });
   } catch (e: any) {
     console.error('POST /api/coletas error:', e);

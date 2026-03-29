@@ -199,14 +199,28 @@ export default function MotoristasPage() {
           />
         </div>
         <div>
-          <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Link CNH (opcional)</label>
-          <input
-            name="cnhUrl"
-            value={form.cnhUrl}
-            onChange={onChange}
-            placeholder="https://..."
-            style={{ width: '100%', padding: 8, background: '#ffffff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }}
-          />
+          <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>CNH (PDF/Imagem)</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="file"
+              accept=".pdf,image/*"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const fd = new FormData();
+                fd.append('file', file);
+                try {
+                  const res = await fetch('/api/upload', { method: 'POST', body: fd });
+                  const j = await res.json();
+                  if (!res.ok) { setMsg(j?.error || 'Falha no upload'); return; }
+                  setForm(prev => ({ ...prev, cnhUrl: j.url }));
+                  setMsg('CNH enviada.');
+                } catch { setMsg('Falha no upload'); }
+              }}
+              style={{ fontSize: 13 }}
+            />
+            {form.cnhUrl && <a href={form.cnhUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#2563eb' }}>Ver</a>}
+          </div>
         </div>
         <div>
           <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Vencimento CNH</label>
@@ -270,12 +284,16 @@ export default function MotoristasPage() {
                             onChange={(e) => setEditForm((p) => ({ ...p, cnhVencimento: e.target.value }))}
                             style={editInput}
                           />
-                          <input
-                            value={editForm.cnhUrl}
-                            onChange={(e) => setEditForm((p) => ({ ...p, cnhUrl: e.target.value }))}
-                            placeholder="Link CNH"
-                            style={editInput}
-                          />
+                          <input type="file" accept=".pdf,image/*" onChange={async (e) => {
+                            const file = e.target.files?.[0]; if (!file) return;
+                            const fd = new FormData(); fd.append('file', file);
+                            try {
+                              const res = await fetch('/api/upload', { method: 'POST', body: fd });
+                              const j = await res.json();
+                              if (res.ok) setEditForm(p => ({ ...p, cnhUrl: j.url }));
+                            } catch {}
+                          }} style={{ ...editInput, border: 'none', padding: 0, fontSize: 11 }} />
+                          {editForm.cnhUrl && <a href={editForm.cnhUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: '#2563eb' }}>Ver CNH</a>}
                         </div>
                       </td>
                       <td style={cellStyle}>
@@ -315,7 +333,7 @@ export default function MotoristasPage() {
                           } else if (diffDays <= 30) {
                             alertColor = '#ef4444';
                             alertText = `${diffDays}d restantes`;
-                          } else if (diffDays <= 60) {
+                          } else if (diffDays <= 90) {
                             alertColor = '#f59e0b';
                             alertText = `${diffDays}d restantes`;
                           }

@@ -25,6 +25,7 @@ export async function GET() {
       planejamentosTransit,
       planejamentosDone,
       patioRows,
+      motoristasComCnh,
       recentColetas,
     ] = await Promise.all([
       prisma.coleta.count({ where: { status: 'EM_PATIO' } }),
@@ -44,6 +45,18 @@ export async function GET() {
         where: { status: 'EM_PATIO' },
         select: { entradaPatioAt: true },
         orderBy: { entradaPatioAt: 'asc' },
+      }),
+      // Motoristas com CNH
+      prisma.motorista.findMany({
+        where: {
+          cnhVencimento: { not: null },
+        },
+        select: {
+          id: true,
+          nome: true,
+          cnhVencimento: true,
+        },
+        orderBy: { cnhVencimento: 'asc' },
       }),
       // Últimas 5 coletas
       prisma.coleta.findMany({
@@ -84,6 +97,15 @@ export async function GET() {
       leadTimeMaxDias = msToDays(maxMs);
     }
 
+    const alertasCnh = motoristasComCnh
+      .filter((m: any) => m.cnhVencimento)
+      .map((m: any) => {
+        const venc = new Date(m.cnhVencimento);
+        const diffDays = Math.ceil((venc.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        return { id: m.id, nome: m.nome, cnhVencimento: m.cnhVencimento, diasRestantes: diffDays };
+      })
+      .filter((m: any) => m.diasRestantes <= 90);
+
     // Peso total no pátio
     const patioAgg = await prisma.coleta.aggregate({
       where: { status: 'EM_PATIO' },
@@ -118,6 +140,7 @@ export async function GET() {
         inTransit: planejamentosTransit,
         done: planejamentosDone,
       },
+      alertasCnh,
       recentColetas: recentColetas.map((c) => ({
         ...c,
         leadTimeDias: c.entradaPatioAt
