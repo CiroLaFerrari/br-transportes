@@ -430,6 +430,8 @@ export default function PlanejamentoPage() {
   const [extrasText, setExtrasText] = useState<string>(''); // "Ajudante:50\nCarregamento:35"
   const [costLoading, setCostLoading] = useState(false);
   const [costResult, setCostResult] = useState<CostResult | null>(null);
+  const [tollEstLoading, setTollEstLoading] = useState(false);
+  const [tollEstMethod, setTollEstMethod] = useState<string>('');
 
   // Lista de planejamentos
   const [listLoading, setListLoading] = useState(false);
@@ -911,6 +913,44 @@ export default function PlanejamentoPage() {
       setError(e?.message || 'Falha ao calcular custo');
     } finally {
       setCostLoading(false);
+    }
+  }
+
+  async function estimarPedagios() {
+    if (!data || !data.points || data.points.length < 2) {
+      setError('Calcule a rota primeiro para estimar pedágios.');
+      return;
+    }
+    try {
+      setTollEstLoading(true);
+      setError(null);
+
+      const points = data.points.map((p: any) => ({
+        lat: p.lat,
+        lon: p.lon,
+        label: p.label,
+      }));
+
+      const res = await fetch('/api/maps/tolls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ points, totalKm: data.total_km }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.error || 'Falha ao estimar pedágios');
+
+      // Format toll values into the text field
+      if (j.tolls && j.tolls.length > 0) {
+        const tollValues = j.tolls.map((t: any) => String(t.price).replace('.', ','));
+        setTollsText(tollValues.join('; '));
+      } else {
+        setTollsText('0');
+      }
+      setTollEstMethod(j.method || '');
+    } catch (e: any) {
+      setError(e?.message || 'Falha ao estimar pedágios');
+    } finally {
+      setTollEstLoading(false);
     }
   }
 
@@ -2166,6 +2206,33 @@ export default function PlanejamentoPage() {
             <label style={{ display: 'flex', flexDirection: 'column', gridColumn: '1 / 3' }}>
               <span style={labelStyle}>Pedágios (separe por vírgula, ponto e vírgula ou nova linha)</span>
               <textarea value={tollsText} onChange={(e) => setTollsText(e.target.value)} rows={2} style={{ ...inputStyle, minHeight: 60 }} placeholder={'12,40; 8,70; 17'} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                <button
+                  onClick={estimarPedagios}
+                  disabled={tollEstLoading || !data}
+                  style={{
+                    ...btn,
+                    background: data ? '#F5BE16' : '#e5e7eb',
+                    color: '#1A4A1A',
+                    padding: '5px 12px',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    opacity: tollEstLoading ? 0.7 : 1,
+                    cursor: data ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  {tollEstLoading ? 'Estimando...' : 'Estimar Pedágios'}
+                </button>
+                {tollEstMethod && (
+                  <span style={{ fontSize: 11, color: '#64748b' }}>
+                    {tollEstMethod === 'google_routes_api'
+                      ? 'Via Google Maps'
+                      : tollEstMethod === 'heuristic_fallback'
+                        ? 'Estimativa (Google indisponível)'
+                        : 'Estimativa baseada na distância'}
+                  </span>
+                )}
+              </div>
             </label>
 
             <label style={{ display: 'flex', flexDirection: 'column', gridColumn: '3 / -1' }}>

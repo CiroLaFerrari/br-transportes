@@ -87,6 +87,7 @@ model Produto {
   volumeM3       Float?
   pesoKg         Float?
   precoUnitario  Float?
+  fabricante     String?
   componentes    Componente[]
   itemsColetados ItemColetado[] @relation("ProdutoToItemColetado")
 }
@@ -462,6 +463,8 @@ model MinutaConferencia {
   pedido      String?
   coletador   String?
   dataColeta  DateTime?
+  valorNF     Float?
+  pesoTotalKg Float?
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
