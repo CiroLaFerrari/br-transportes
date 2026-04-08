@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 type Motorista = {
   id: string;
@@ -11,6 +11,63 @@ type Motorista = {
   cnhVencimento?: string | null;
   createdAt?: string;
 };
+
+/* Styled upload button component */
+function FileUploadBtn({ label, onUploaded, currentUrl, accent }: {
+  label: string;
+  onUploaded: (url: string) => void;
+  currentUrl?: string;
+  accent?: string;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const color = accent || '#2563eb';
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const j = await res.json();
+      if (res.ok) onUploaded(j.url);
+    } catch { /* ignore */ } finally {
+      setUploading(false);
+      if (ref.current) ref.current.value = '';
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <input ref={ref} type="file" accept=".pdf,image/*" onChange={handleFile} style={{ display: 'none' }} />
+      <button
+        type="button"
+        onClick={() => ref.current?.click()}
+        disabled={uploading}
+        style={{
+          padding: '5px 12px',
+          background: uploading ? '#94a3b8' : color,
+          color: 'white',
+          border: 0,
+          borderRadius: 6,
+          cursor: uploading ? 'wait' : 'pointer',
+          fontSize: 12,
+          fontWeight: 600,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {uploading ? 'Enviando...' : label}
+      </button>
+      {currentUrl && (
+        <a href={currentUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color, fontWeight: 600, textDecoration: 'none' }}>
+          Ver
+        </a>
+      )}
+    </div>
+  );
+}
 
 export default function MotoristasPage() {
   const [list, setList] = useState<Motorista[]>([]);
@@ -168,7 +225,7 @@ export default function MotoristasPage() {
         style={{
           display: 'grid',
           gap: 8,
-          gridTemplateColumns: '1fr 200px 200px 140px 120px',
+          gridTemplateColumns: '1fr 200px 1fr 160px 120px',
           alignItems: 'end',
           marginBottom: 16,
           background: '#ffffff',
@@ -189,38 +246,23 @@ export default function MotoristasPage() {
           />
         </div>
         <div>
-          <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Documento (opcional)</label>
+          <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Documento (CPF/RG)</label>
           <input
             name="documento"
             value={form.documento}
             onChange={onChange}
-            placeholder="Ex.: CPF/CNH"
+            placeholder="Ex.: 123.456.789-00"
             style={{ width: '100%', padding: 8, background: '#ffffff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }}
           />
         </div>
         <div>
-          <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>CNH (PDF/Imagem)</label>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input
-              type="file"
-              accept=".pdf,image/*"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const fd = new FormData();
-                fd.append('file', file);
-                try {
-                  const res = await fetch('/api/upload', { method: 'POST', body: fd });
-                  const j = await res.json();
-                  if (!res.ok) { setMsg(j?.error || 'Falha no upload'); return; }
-                  setForm(prev => ({ ...prev, cnhUrl: j.url }));
-                  setMsg('CNH enviada.');
-                } catch { setMsg('Falha no upload'); }
-              }}
-              style={{ fontSize: 13 }}
-            />
-            {form.cnhUrl && <a href={form.cnhUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#2563eb' }}>Ver</a>}
-          </div>
+          <label style={{ display: 'block', fontSize: 12, color: '#64748b', marginBottom: 4 }}>CNH (PDF/Imagem)</label>
+          <FileUploadBtn
+            label="Enviar CNH"
+            currentUrl={form.cnhUrl}
+            onUploaded={(url) => { setForm(prev => ({ ...prev, cnhUrl: url })); setMsg('CNH enviada.'); }}
+            accent="#1A4A1A"
+          />
         </div>
         <div>
           <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Vencimento CNH</label>
@@ -243,11 +285,11 @@ export default function MotoristasPage() {
           <label htmlFor="disp" style={{ color: '#64748b', userSelect: 'none' }}>Disponível</label>
         </div>
 
-        <div style={{ gridColumn: '1 / span 5', display: 'flex', gap: 8 }}>
-          <button type="submit" style={{ padding: '8px 12px', background: '#2563eb', color: 'white', border: 0, borderRadius: 6 }}>
+        <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8 }}>
+          <button type="submit" style={{ padding: '8px 16px', background: '#1A4A1A', color: '#F5BE16', border: 0, borderRadius: 6, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
             Criar motorista
           </button>
-          {msg && <span style={{ color: msg.includes('sucesso') ? '#9bdc9b' : '#f59e0b' }}>{msg}</span>}
+          {msg && <span style={{ color: msg.includes('sucesso') || msg.includes('enviada') ? '#16a34a' : '#f59e0b', alignSelf: 'center' }}>{msg}</span>}
         </div>
       </form>
 
@@ -274,7 +316,7 @@ export default function MotoristasPage() {
                         <input value={editForm.nome} onChange={(e) => setEditForm((p) => ({ ...p, nome: e.target.value }))} style={editInput} />
                       </td>
                       <td style={cellStyle}>
-                        <input value={editForm.documento} onChange={(e) => setEditForm((p) => ({ ...p, documento: e.target.value }))} style={editInput} />
+                        <input value={editForm.documento} onChange={(e) => setEditForm((p) => ({ ...p, documento: e.target.value }))} style={editInput} placeholder="CPF/RG" />
                       </td>
                       <td style={cellStyle}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -284,16 +326,12 @@ export default function MotoristasPage() {
                             onChange={(e) => setEditForm((p) => ({ ...p, cnhVencimento: e.target.value }))}
                             style={editInput}
                           />
-                          <input type="file" accept=".pdf,image/*" onChange={async (e) => {
-                            const file = e.target.files?.[0]; if (!file) return;
-                            const fd = new FormData(); fd.append('file', file);
-                            try {
-                              const res = await fetch('/api/upload', { method: 'POST', body: fd });
-                              const j = await res.json();
-                              if (res.ok) setEditForm(p => ({ ...p, cnhUrl: j.url }));
-                            } catch {}
-                          }} style={{ ...editInput, border: 'none', padding: 0, fontSize: 11 }} />
-                          {editForm.cnhUrl && <a href={editForm.cnhUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: '#2563eb' }}>Ver CNH</a>}
+                          <FileUploadBtn
+                            label="Enviar CNH"
+                            currentUrl={editForm.cnhUrl}
+                            onUploaded={(url) => setEditForm(p => ({ ...p, cnhUrl: url }))}
+                            accent="#1A4A1A"
+                          />
                         </div>
                       </td>
                       <td style={cellStyle}>
@@ -306,7 +344,7 @@ export default function MotoristasPage() {
                       <td style={cellStyle}>
                         <div style={{ display: 'flex', gap: 4 }}>
                           <button onClick={saveEdit} disabled={editSaving} style={{ ...btnSmall, background: '#22c55e', color: 'black' }}>
-                            {editSaving ? '…' : 'Salvar'}
+                            {editSaving ? '...' : 'Salvar'}
                           </button>
                           <button onClick={() => setEditId(null)} style={{ ...btnSmall, background: '#64748b', color: 'white' }}>
                             Cancelar
@@ -317,12 +355,12 @@ export default function MotoristasPage() {
                   ) : (
                     <>
                       <td style={cellStyle}>{m.nome}</td>
-                      <td style={cellStyle}>{m.documento || '-'}</td>
+                      <td style={cellStyle}>{m.documento || <span style={{ color: '#94a3b8' }}>-</span>}</td>
                       <td style={cellStyle}>
                         <div>
                           {m.cnhUrl && (
                             <div style={{ marginBottom: 4 }}>
-                              <a href={m.cnhUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', fontSize: 12, fontWeight: 600, textDecoration: 'none', padding: '2px 8px', background: '#dbeafe', borderRadius: 4 }}>
+                              <a href={m.cnhUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#fff', fontSize: 12, fontWeight: 600, textDecoration: 'none', padding: '4px 12px', background: '#1A4A1A', borderRadius: 6, display: 'inline-block' }}>
                                 Ver CNH
                               </a>
                             </div>
