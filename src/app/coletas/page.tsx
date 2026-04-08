@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Coleta = {
   id: string;
@@ -69,6 +69,10 @@ export default function ColetasPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [itensColeta, setItensColeta] = useState<Array<{ produtoId: string; quantidade: number }>>([]);
+  const [prodBusca, setProdBusca] = useState('');
+  const [prodDropOpen, setProdDropOpen] = useState(false);
+  const [prodSelecionado, setProdSelecionado] = useState<Produto | null>(null);
+  const prodDropRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -201,6 +205,17 @@ export default function ColetasPage() {
     void loadClientes();
     void loadProdutos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Close product dropdown on click outside
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (prodDropRef.current && !prodDropRef.current.contains(e.target as Node)) {
+        setProdDropOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
   const onChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -443,19 +458,83 @@ export default function ColetasPage() {
 
         {/* Add product row */}
         <div style={{ display: 'flex', gap: 8, alignItems: 'end', marginBottom: 8 }}>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, position: 'relative' }} ref={prodDropRef}>
             <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Produto</label>
-            <select
-              id="addProdutoSelect"
-              style={{ width: '100%', padding: 8, background: '#ffffff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }}
-            >
-              <option value="">Selecione um produto...</option>
-              {produtos.map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.code} — {p.descricao} {p.pesoKg ? `(${p.pesoKg}kg)` : ''} {p.precoUnitario ? `R$${p.precoUnitario}` : ''}
-                </option>
-              ))}
-            </select>
+            <input
+              type="text"
+              value={prodSelecionado ? `${prodSelecionado.code} — ${prodSelecionado.descricao}` : prodBusca}
+              onChange={(e) => {
+                setProdBusca(e.target.value);
+                setProdSelecionado(null);
+                setProdDropOpen(true);
+              }}
+              onFocus={() => setProdDropOpen(true)}
+              placeholder="Digite para buscar produto..."
+              style={{
+                width: '100%',
+                padding: 8,
+                background: prodSelecionado ? '#f0fdf4' : '#ffffff',
+                color: '#1e293b',
+                border: `1px solid ${prodSelecionado ? '#22c55e' : '#d1d5db'}`,
+                borderRadius: 6,
+              }}
+            />
+            {prodSelecionado && (
+              <button
+                type="button"
+                onClick={() => { setProdSelecionado(null); setProdBusca(''); }}
+                style={{ position: 'absolute', right: 8, top: 28, background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#94a3b8' }}
+                title="Limpar"
+              >
+                x
+              </button>
+            )}
+            {prodDropOpen && !prodSelecionado && (() => {
+              const termo = prodBusca.toLowerCase().trim();
+              const filtered = termo
+                ? produtos.filter(p =>
+                    p.code.toLowerCase().includes(termo) ||
+                    p.descricao.toLowerCase().includes(termo)
+                  ).slice(0, 50)
+                : produtos.slice(0, 50);
+              return filtered.length > 0 ? (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                  background: '#fff', border: '1px solid #d1d5db', borderRadius: 6,
+                  maxHeight: 280, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                }}>
+                  {filtered.map(p => (
+                    <div
+                      key={p.id}
+                      onClick={() => {
+                        setProdSelecionado(p);
+                        setProdBusca('');
+                        setProdDropOpen(false);
+                      }}
+                      style={{
+                        padding: '8px 12px', cursor: 'pointer', fontSize: 13,
+                        borderBottom: '1px solid #f1f5f9',
+                      }}
+                      onMouseEnter={(e) => { (e.target as HTMLElement).style.background = '#f0fdf4'; }}
+                      onMouseLeave={(e) => { (e.target as HTMLElement).style.background = '#fff'; }}
+                    >
+                      <span style={{ fontWeight: 600, color: '#1A4A1A' }}>{p.code}</span>
+                      <span style={{ color: '#64748b' }}> — {p.descricao}</span>
+                      {p.pesoKg ? <span style={{ color: '#f59e0b', marginLeft: 6, fontSize: 11 }}>({p.pesoKg}kg)</span> : null}
+                    </div>
+                  ))}
+                </div>
+              ) : termo ? (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                  background: '#fff', border: '1px solid #d1d5db', borderRadius: 6,
+                  padding: '12px', color: '#94a3b8', fontSize: 13,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                }}>
+                  Nenhum produto encontrado
+                </div>
+              ) : null;
+            })()}
           </div>
           <div style={{ width: 100 }}>
             <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Qtd</label>
@@ -470,16 +549,23 @@ export default function ColetasPage() {
           <button
             type="button"
             onClick={() => {
-              const sel = (document.getElementById('addProdutoSelect') as HTMLSelectElement)?.value;
+              if (!prodSelecionado) return;
               const qtd = Number((document.getElementById('addProdutoQtd') as HTMLInputElement)?.value) || 1;
-              if (!sel) return;
               setItensColeta(prev => {
-                const existing = prev.find(i => i.produtoId === sel);
-                if (existing) return prev.map(i => i.produtoId === sel ? { ...i, quantidade: i.quantidade + qtd } : i);
-                return [...prev, { produtoId: sel, quantidade: qtd }];
+                const existing = prev.find(i => i.produtoId === prodSelecionado.id);
+                if (existing) return prev.map(i => i.produtoId === prodSelecionado.id ? { ...i, quantidade: i.quantidade + qtd } : i);
+                return [...prev, { produtoId: prodSelecionado.id, quantidade: qtd }];
               });
+              setProdSelecionado(null);
+              setProdBusca('');
             }}
-            style={{ padding: '8px 12px', background: '#2563eb', color: 'white', border: 0, borderRadius: 6, whiteSpace: 'nowrap' }}
+            style={{
+              padding: '8px 12px',
+              background: prodSelecionado ? '#1A4A1A' : '#94a3b8',
+              color: prodSelecionado ? '#F5BE16' : '#fff',
+              border: 0, borderRadius: 6, whiteSpace: 'nowrap', fontWeight: 700,
+              cursor: prodSelecionado ? 'pointer' : 'not-allowed',
+            }}
           >
             + Adicionar
           </button>
