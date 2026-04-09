@@ -15,9 +15,11 @@ type Veiculo = {
   licenciamentoVencimento: string | null;
   documentosUrl: string | null;
   documentosVencimento: string | null;
+  tacografoUrl: string | null;
+  tacografoVencimento: string | null;
 };
 
-function docExpiryBadge(licVenc: string | null, docVenc: string | null): React.ReactNode {
+function docExpiryBadge(licVenc: string | null, docVenc: string | null, tacVenc?: string | null): React.ReactNode {
   const now = new Date();
   const badges: React.ReactNode[] = [];
 
@@ -44,6 +46,7 @@ function docExpiryBadge(licVenc: string | null, docVenc: string | null): React.R
 
   check(licVenc, 'Lic.');
   check(docVenc, 'Doc.');
+  check(tacVenc ?? null, 'Tac.');
   return badges.length > 0 ? <>{badges}</> : null;
 }
 
@@ -127,6 +130,8 @@ export default function VeiculosPage() {
     licenciamentoVencimento: '',
     documentosUrl: '',
     documentosVencimento: '',
+    tacografoUrl: '',
+    tacografoVencimento: '',
   });
 
   // edição inline
@@ -143,6 +148,8 @@ export default function VeiculosPage() {
     licenciamentoVencimento: '',
     documentosUrl: '',
     documentosVencimento: '',
+    tacografoUrl: '',
+    tacografoVencimento: '',
   });
   const [editSaving, setEditSaving] = useState(false);
 
@@ -209,6 +216,8 @@ export default function VeiculosPage() {
     if (form.licenciamentoVencimento) payload.licenciamentoVencimento = form.licenciamentoVencimento;
     if (form.documentosUrl.trim()) payload.documentosUrl = form.documentosUrl.trim();
     if (form.documentosVencimento) payload.documentosVencimento = form.documentosVencimento;
+    if (form.tacografoUrl.trim()) payload.tacografoUrl = form.tacografoUrl.trim();
+    if (form.tacografoVencimento) payload.tacografoVencimento = form.tacografoVencimento;
 
     try {
       const res = await fetch('/api/veiculos', {
@@ -223,7 +232,7 @@ export default function VeiculosPage() {
       }
       setForm({
         placa: '', capacidadeKg: '', capacidadeM3: '', compCm: '', largCm: '', altCm: '',
-        numEixos: '', licenciamentoUrl: '', licenciamentoVencimento: '', documentosUrl: '', documentosVencimento: '',
+        numEixos: '', licenciamentoUrl: '', licenciamentoVencimento: '', documentosUrl: '', documentosVencimento: '', tacografoUrl: '', tacografoVencimento: '',
       });
       await load();
       setMsg('Veículo criado com sucesso.');
@@ -261,6 +270,8 @@ export default function VeiculosPage() {
       licenciamentoVencimento: toDateInputValue(v.licenciamentoVencimento),
       documentosUrl: v.documentosUrl ?? '',
       documentosVencimento: toDateInputValue(v.documentosVencimento),
+      tacografoUrl: v.tacografoUrl ?? '',
+      tacografoVencimento: toDateInputValue(v.tacografoVencimento),
     });
   }
 
@@ -282,6 +293,8 @@ export default function VeiculosPage() {
         licenciamentoVencimento: editForm.licenciamentoVencimento || null,
         documentosUrl: editForm.documentosUrl.trim() || null,
         documentosVencimento: editForm.documentosVencimento || null,
+        tacografoUrl: editForm.tacografoUrl.trim() || null,
+        tacografoVencimento: editForm.tacografoVencimento || null,
       };
 
       const res = await fetch(`/api/veiculos/${editId}`, {
@@ -386,6 +399,27 @@ export default function VeiculosPage() {
           />
         </div>
 
+        {/* Row 3: Tacógrafo upload + date */}
+        <div style={{ gridColumn: '1 / span 2' }}>
+          <label style={{ display: 'block', fontSize: 12, color: '#64748b', marginBottom: 4 }}>Tacógrafo (PDF)</label>
+          <FileUploadBtn
+            label="Enviar Tacógrafo"
+            currentUrl={form.tacografoUrl}
+            onUploaded={(url) => { setForm(prev => ({ ...prev, tacografoUrl: url })); setMsg('Tacógrafo enviado.'); }}
+            accent="#1A4A1A"
+          />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Venc. Tacógrafo</label>
+          <input
+            name="tacografoVencimento"
+            value={form.tacografoVencimento}
+            onChange={onChange}
+            type="date"
+            style={{ width: '100%', padding: 8, background: '#ffffff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }}
+          />
+        </div>
+
         <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8 }}>
           <button type="submit" style={{ padding: '8px 16px', background: '#1A4A1A', color: '#F5BE16', border: 0, borderRadius: 6, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
             Criar veículo
@@ -474,6 +508,22 @@ export default function VeiculosPage() {
                               title="Venc. Documentos"
                             />
                           </div>
+                          <div>
+                            <div style={{ fontSize: 10, color: '#64748b', marginBottom: 2 }}>Tacógrafo</div>
+                            <FileUploadBtn
+                              label="Enviar"
+                              currentUrl={editForm.tacografoUrl}
+                              onUploaded={(url) => setEditForm(p => ({ ...p, tacografoUrl: url }))}
+                              accent="#1A4A1A"
+                            />
+                            <input
+                              value={editForm.tacografoVencimento}
+                              onChange={(e) => setEditForm((p) => ({ ...p, tacografoVencimento: e.target.value }))}
+                              style={{ ...editInput, marginTop: 4, fontSize: 11 }}
+                              type="date"
+                              title="Venc. Tacógrafo"
+                            />
+                          </div>
                         </div>
                       </td>
                       <td style={cellStyle}></td>
@@ -513,10 +563,17 @@ export default function VeiculosPage() {
                           ) : (
                             <span style={{ fontSize: 11, color: '#94a3b8' }}>Sem doc.</span>
                           )}
+                          {v.tacografoUrl ? (
+                            <a href={v.tacografoUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, fontWeight: 600, color: '#2563eb', textDecoration: 'none', padding: '2px 8px', background: '#dbeafe', borderRadius: 4, display: 'inline-block' }}>
+                              Tacógrafo
+                            </a>
+                          ) : (
+                            <span style={{ fontSize: 11, color: '#94a3b8' }}>Sem tac.</span>
+                          )}
                         </div>
                       </td>
                       <td style={cellStyle}>
-                        {docExpiryBadge(v.licenciamentoVencimento, v.documentosVencimento) || (
+                        {docExpiryBadge(v.licenciamentoVencimento, v.documentosVencimento, v.tacografoVencimento) || (
                           <span style={{ color: '#94a3b8', fontSize: 12 }}>OK</span>
                         )}
                       </td>

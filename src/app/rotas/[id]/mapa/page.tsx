@@ -7,7 +7,7 @@ type Stop = { order: number; destination: string };
 type Rota = { id: string; origin: string; stops: Stop[] };
 type Pt = { label: string; coord: [number, number] };
 
-const LeafletMap = dynamic(() => import('@/components/LeafletMap'), { ssr: false });
+const GoogleMap = dynamic(() => import('@/components/GoogleMap'), { ssr: false });
 
 export default function RotaMapaPage() {
   const { id } = useParams<{ id: string }>();
@@ -71,7 +71,7 @@ export default function RotaMapaPage() {
           Origem: <b>{rota.origin}</b> — Paradas: {rota.stops.length}
         </div>
       )}
-      {pts && <LeafletMap points={pts} />}
+      {pts && <GoogleMap points={pts} />}
       {!pts && !carregando && <div className="text-sm text-gray-500">Preparando mapa…</div>}
     </main>
   );

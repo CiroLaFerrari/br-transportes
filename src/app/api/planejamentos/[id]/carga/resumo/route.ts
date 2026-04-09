@@ -179,6 +179,16 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       });
     }
 
+    // Totais globais (para % calc)
+    let preTotalPeso = 0;
+    let preTotalVol = 0;
+    let preTotalFrete = 0;
+    for (const cr of coletaResumoMap.values()) {
+      preTotalPeso += cr.pesoKg;
+      preTotalVol += cr.volumeM3;
+      preTotalFrete += cr.valorFrete;
+    }
+
     // Resumo por parada
     const paradasResumo = paradas.map(p => {
       const cr = p.coletaId ? coletaResumoMap.get(p.coletaId) : undefined;
@@ -197,6 +207,9 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
         pesoKg: peso,
         volumeM3: vol,
         valorFrete: frete,
+        pctPeso: preTotalPeso > 0 ? Math.round((peso / preTotalPeso) * 10000) / 100 : null,
+        pctVolume: preTotalVol > 0 ? Math.round((vol / preTotalVol) * 10000) / 100 : null,
+        pctFrete: preTotalFrete > 0 ? Math.round((frete / preTotalFrete) * 10000) / 100 : null,
         coleta: cr ?? null,
       };
     });

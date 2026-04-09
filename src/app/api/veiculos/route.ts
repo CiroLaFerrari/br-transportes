@@ -24,6 +24,8 @@ export async function GET(req: NextRequest) {
         licenciamentoVencimento: true,
         documentosUrl: true,
         documentosVencimento: true,
+        tacografoUrl: true,
+        tacografoVencimento: true,
         createdAt: true,
       },
     });
@@ -69,17 +71,23 @@ export async function POST(req: NextRequest) {
 
     const licenciamentoUrl = body?.licenciamentoUrl ? String(body.licenciamentoUrl).trim() : undefined;
     const documentosUrl = body?.documentosUrl ? String(body.documentosUrl).trim() : undefined;
+    const tacografoUrl = body?.tacografoUrl ? String(body.tacografoUrl).trim() : undefined;
 
     const licenciamentoVencimento = body?.licenciamentoVencimento
       ? new Date(body.licenciamentoVencimento) : undefined;
     const documentosVencimento = body?.documentosVencimento
       ? new Date(body.documentosVencimento) : undefined;
+    const tacografoVencimento = body?.tacografoVencimento
+      ? new Date(body.tacografoVencimento) : undefined;
 
     if (licenciamentoVencimento && isNaN(licenciamentoVencimento.getTime())) {
       return NextResponse.json({ error: 'licenciamentoVencimento inválido' }, { status: 400 });
     }
     if (documentosVencimento && isNaN(documentosVencimento.getTime())) {
       return NextResponse.json({ error: 'documentosVencimento inválido' }, { status: 400 });
+    }
+    if (tacografoVencimento && isNaN(tacografoVencimento.getTime())) {
+      return NextResponse.json({ error: 'tacografoVencimento inválido' }, { status: 400 });
     }
 
     const created = await prisma.veiculo.create({
@@ -90,6 +98,8 @@ export async function POST(req: NextRequest) {
         ...(licenciamentoVencimento && { licenciamentoVencimento }),
         ...(documentosUrl && { documentosUrl }),
         ...(documentosVencimento && { documentosVencimento }),
+        ...(tacografoUrl && { tacografoUrl }),
+        ...(tacografoVencimento && { tacografoVencimento }),
       },
       select: { id: true },
     });

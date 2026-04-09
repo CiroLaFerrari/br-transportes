@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import LeafletMap from '@/components/LeafletMap';
+import GoogleMap from '@/components/GoogleMap';
 
 type StatusExec = 'PENDENTE' | 'EM_ATENDIMENTO' | 'ENTREGUE' | 'FALHA';
 type ColetaStatus = 'EM_PATIO' | 'CARREGADA' | 'EM_TRANSITO' | 'ENTREGUE';
@@ -790,7 +790,7 @@ export default function RotaDetalhePage() {
           }}
         >
           {mapPoints.length > 0 ? (
-            <LeafletMap points={mapPoints} lines={mapLines} />
+            <GoogleMap points={mapPoints} lines={mapLines} />
           ) : (
             <div style={{ padding: 14, opacity: 0.8 }}>(Sem pontos para exibir)</div>
           )}

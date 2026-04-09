@@ -66,6 +66,36 @@ type ScanEventRow = {
   createdAt: string;
 };
 
+type RepColeta = {
+  id: string;
+  nf: string;
+  pesoKg: number;
+  valorFrete: number;
+  pctPeso: number | null;
+  pctFrete: number | null;
+};
+
+type Representatividade = {
+  planejamentoId: string;
+  planejamentoName: string;
+  totalColetas: number;
+  totalPesoKg: number;
+  totalValorFrete: number;
+  estaNF: {
+    pesoKg: number;
+    valorFrete: number;
+    pctPeso: number | null;
+    pctFrete: number | null;
+  };
+  veiculo: {
+    placa: string;
+    capacidadeKg: number | null;
+    capacidadeM3: number | null;
+    pctCapacidadePeso: number | null;
+  } | null;
+  coletas: RepColeta[];
+};
+
 function fmt(iso?: string | null) {
   if (!iso) return '—';
   try {
@@ -96,6 +126,9 @@ export default function ColetaDetalhePage() {
   // ✅ auditoria/eventos
   const [eventos, setEventos] = useState<ScanEventRow[]>([]);
   const [eventosErr, setEventosErr] = useState<string | null>(null);
+
+  // representatividade
+  const [repData, setRepData] = useState<Representatividade[]>([]);
 
   // form
   const [nf, setNf] = useState('');
@@ -159,6 +192,7 @@ export default function ColetaDetalhePage() {
 
       setColeta(c);
       setLead(lt);
+      setRepData(Array.isArray(j.representatividade) ? j.representatividade : []);
 
       if (c) {
         setNf(c.nf ?? '');
@@ -500,6 +534,129 @@ export default function ColetaDetalhePage() {
                 </table>
               )}
             </div>
+
+            {/* Representatividade na Carga */}
+            {repData.length > 0 && (
+              <div style={{ marginTop: 18 }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: '#e5e7eb' }}>
+                  Representatividade na Carga
+                </h3>
+                {repData.map((rep) => {
+                  const fmtBRL = Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+                  const fmtNum = Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
+                  return (
+                    <div key={rep.planejamentoId} style={{ marginBottom: 16, padding: 12, background: '#141a22', borderRadius: 8, border: '1px solid #2a3442' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                        <div>
+                          <span style={{ fontWeight: 700, color: '#e5e7eb' }}>{rep.planejamentoName}</span>
+                          <span style={{ fontSize: 12, color: '#9db0ca', marginLeft: 8 }}>({rep.totalColetas} NFs na carga)</span>
+                        </div>
+                        <Link href={`/planejamento/${rep.planejamentoId}/carga`} style={{ color: '#93c5fd', fontSize: 12, textDecoration: 'underline' }}>
+                          Ver carga
+                        </Link>
+                      </div>
+
+                      {/* Barras de % */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 11, color: '#9db0ca', marginBottom: 4 }}>
+                            Peso: {fmtNum.format(rep.estaNF.pesoKg)} / {fmtNum.format(rep.totalPesoKg)} kg
+                          </div>
+                          <div style={{ height: 18, borderRadius: 4, background: '#2a3442', overflow: 'hidden', position: 'relative' }}>
+                            <div style={{
+                              height: '100%',
+                              width: `${Math.min(rep.estaNF.pctPeso ?? 0, 100)}%`,
+                              background: '#22c55e',
+                              borderRadius: 4,
+                              display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 4,
+                            }}>
+                              {(rep.estaNF.pctPeso ?? 0) >= 10 && (
+                                <span style={{ fontSize: 10, fontWeight: 700, color: '#fff' }}>{fmtNum.format(rep.estaNF.pctPeso!)}%</span>
+                              )}
+                            </div>
+                            {(rep.estaNF.pctPeso ?? 0) < 10 && rep.estaNF.pctPeso != null && (
+                              <span style={{ position: 'absolute', top: 1, left: 4, fontSize: 10, fontWeight: 700, color: '#9db0ca' }}>{fmtNum.format(rep.estaNF.pctPeso)}%</span>
+                            )}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, color: '#9db0ca', marginBottom: 4 }}>
+                            Frete: {fmtBRL.format(rep.estaNF.valorFrete)} / {fmtBRL.format(rep.totalValorFrete)}
+                          </div>
+                          <div style={{ height: 18, borderRadius: 4, background: '#2a3442', overflow: 'hidden', position: 'relative' }}>
+                            <div style={{
+                              height: '100%',
+                              width: `${Math.min(rep.estaNF.pctFrete ?? 0, 100)}%`,
+                              background: '#3b82f6',
+                              borderRadius: 4,
+                              display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 4,
+                            }}>
+                              {(rep.estaNF.pctFrete ?? 0) >= 10 && (
+                                <span style={{ fontSize: 10, fontWeight: 700, color: '#fff' }}>{fmtNum.format(rep.estaNF.pctFrete!)}%</span>
+                              )}
+                            </div>
+                            {(rep.estaNF.pctFrete ?? 0) < 10 && rep.estaNF.pctFrete != null && (
+                              <span style={{ position: 'absolute', top: 1, left: 4, fontSize: 10, fontWeight: 700, color: '#9db0ca' }}>{fmtNum.format(rep.estaNF.pctFrete)}%</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Veículo info */}
+                      {rep.veiculo && (
+                        <div style={{ fontSize: 12, color: '#9db0ca', marginBottom: 10 }}>
+                          Veículo: <strong style={{ color: '#e5e7eb' }}>{rep.veiculo.placa}</strong>
+                          {rep.veiculo.capacidadeKg != null && (
+                            <span> — Cap.: {Intl.NumberFormat('pt-BR').format(rep.veiculo.capacidadeKg)} kg</span>
+                          )}
+                          {rep.veiculo.pctCapacidadePeso != null && (
+                            <span style={{ color: rep.veiculo.pctCapacidadePeso > 100 ? '#ef4444' : rep.veiculo.pctCapacidadePeso > 80 ? '#f59e0b' : '#22c55e', fontWeight: 700, marginLeft: 6 }}>
+                              ({fmtNum.format(rep.veiculo.pctCapacidadePeso)}% ocupado)
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Tabela de todas NFs na carga */}
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ color: '#9db0ca' }}>
+                            <th style={{ textAlign: 'left', padding: '4px 8px', borderBottom: '1px solid #2a3442' }}>NF</th>
+                            <th style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #2a3442' }}>Peso (kg)</th>
+                            <th style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #2a3442' }}>% Peso</th>
+                            <th style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #2a3442' }}>Frete</th>
+                            <th style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #2a3442' }}>% Frete</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rep.coletas.map((rc) => (
+                            <tr key={rc.id} style={{ color: rc.id === id ? '#F5BE16' : '#e5e7eb', fontWeight: rc.id === id ? 700 : 400 }}>
+                              <td style={{ padding: '4px 8px', borderBottom: '1px solid #1e2a36' }}>
+                                {rc.id === id ? `▸ ${rc.nf}` : (
+                                  <Link href={`/coletas/${rc.id}`} style={{ color: '#93c5fd', textDecoration: 'none' }}>{rc.nf}</Link>
+                                )}
+                              </td>
+                              <td style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #1e2a36' }}>
+                                {fmtNum.format(rc.pesoKg)}
+                              </td>
+                              <td style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #1e2a36' }}>
+                                {rc.pctPeso != null ? `${fmtNum.format(rc.pctPeso)}%` : '—'}
+                              </td>
+                              <td style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #1e2a36' }}>
+                                {fmtBRL.format(rc.valorFrete)}
+                              </td>
+                              <td style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #1e2a36' }}>
+                                {rc.pctFrete != null ? `${fmtNum.format(rc.pctFrete)}%` : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* ✅ Auditoria / Eventos */}
             <div style={{ marginTop: 18 }}>

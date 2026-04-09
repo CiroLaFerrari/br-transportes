@@ -63,6 +63,16 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
         data.documentosVencimento = d;
       }
     }
+    if (body?.tacografoUrl !== undefined) data.tacografoUrl = body.tacografoUrl ? String(body.tacografoUrl).trim() : null;
+    if (body?.tacografoVencimento !== undefined) {
+      if (!body.tacografoVencimento) {
+        data.tacografoVencimento = null;
+      } else {
+        const d = new Date(body.tacografoVencimento);
+        if (isNaN(d.getTime())) return NextResponse.json({ error: 'tacografoVencimento inválido.' }, { status: 400 });
+        data.tacografoVencimento = d;
+      }
+    }
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: 'Nenhum campo informado.' }, { status: 400 });

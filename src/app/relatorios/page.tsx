@@ -18,6 +18,7 @@ type PatioColeta = {
   uf: string;
   status: string;
   cliente: string;
+  cnpj: string | null;
   pesoTotalKg: number | null;
   valorFrete: number | null;
   entradaPatioAt: string | null;
@@ -39,9 +40,9 @@ type PatioReport = {
     pesoTotal: number;
     freteTotal: number;
   };
-  faixas: { ate3: number; ate7: number; ate15: number; ate30: number; acima30: number };
+  faixas: { ate3: number; ate7: number; ate15: number; acima15: number };
   analiseUf: Array<{ uf: string; count: number; mediaDias: number; maxDias: number }>;
-  analiseCliente: Array<{ cliente: string; count: number; mediaDias: number; maxDias: number; valorFrete: number }>;
+  analiseCliente: Array<{ cliente: string; cnpj: string | null; count: number; mediaDias: number; maxDias: number; valorFrete: number }>;
   coletas: PatioColeta[];
 };
 
@@ -299,7 +300,7 @@ function PatioTab() {
   const m = report?.metricas;
   const faixas = report?.faixas;
 
-  const faixaTotal = faixas ? faixas.ate3 + faixas.ate7 + faixas.ate15 + faixas.ate30 + faixas.acima30 : 0;
+  const faixaTotal = faixas ? faixas.ate3 + faixas.ate7 + faixas.ate15 + faixas.acima15 : 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -331,10 +332,11 @@ function PatioTab() {
           <button
             style={btnOutline}
             onClick={() => {
-              const headers = ['NF', 'Cliente', 'Cidade', 'UF', 'Status', 'Aberto', 'Peso (kg)', 'Valor Frete', 'Data Entrada Pátio', 'Data Saída Pátio', 'Lead Time (dias)'];
+              const headers = ['NF', 'Cliente', 'CNPJ', 'Cidade', 'UF', 'Status', 'Aberto', 'Peso (kg)', 'Valor Frete', 'Data Entrada Pátio', 'Data Saída Pátio', 'Lead Time (dias)'];
               const rows = report.coletas.map((c) => [
                 c.nf,
                 c.cliente,
+                c.cnpj || '-',
                 c.cidade,
                 c.uf,
                 c.status,
@@ -382,15 +384,13 @@ function PatioTab() {
                   <FaixaBar value={faixas.ate3} total={faixaTotal} color="#22c55e" />
                   <FaixaBar value={faixas.ate7} total={faixaTotal} color="#84cc16" />
                   <FaixaBar value={faixas.ate15} total={faixaTotal} color="#f59e0b" />
-                  <FaixaBar value={faixas.ate30} total={faixaTotal} color="#f97316" />
-                  <FaixaBar value={faixas.acima30} total={faixaTotal} color="#dc2626" />
+                  <FaixaBar value={faixas.acima15} total={faixaTotal} color="#dc2626" />
                 </div>
                 <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12 }}>
                   <FaixaLegend label="≤ 3 dias" value={faixas.ate3} color="#22c55e" />
                   <FaixaLegend label="4–7 dias" value={faixas.ate7} color="#84cc16" />
                   <FaixaLegend label="8–15 dias" value={faixas.ate15} color="#f59e0b" />
-                  <FaixaLegend label="16–30 dias" value={faixas.ate30} color="#f97316" />
-                  <FaixaLegend label="> 30 dias" value={faixas.acima30} color="#dc2626" />
+                  <FaixaLegend label="> 15 dias" value={faixas.acima15} color="#dc2626" />
                 </div>
               </>
             ) : (
@@ -491,6 +491,7 @@ function PatioColetas({ coletas }: { coletas: PatioColeta[] }) {
             <tr style={{ background: '#f8fafc' }}>
               <th style={thStyle}>NF</th>
               <th style={thStyle}>Cliente</th>
+              <th style={thStyle}>CNPJ</th>
               <th style={thStyle}>Cidade/UF</th>
               <th style={thStyle}>Status</th>
               <th style={{ ...thStyle, textAlign: 'right' }}>Peso (kg)</th>
@@ -505,6 +506,7 @@ function PatioColetas({ coletas }: { coletas: PatioColeta[] }) {
                   <a href={`/coletas/${c.id}`} style={{ color: '#2563eb', textDecoration: 'none' }}>{c.nf}</a>
                 </td>
                 <td style={tdStyle}>{c.cliente}</td>
+                <td style={tdStyle}>{c.cnpj || '-'}</td>
                 <td style={tdStyle}>{c.cidade}/{c.uf}</td>
                 <td style={tdStyle}>
                   <span style={{
@@ -525,7 +527,7 @@ function PatioColetas({ coletas }: { coletas: PatioColeta[] }) {
               </tr>
             ))}
             {sorted.length === 0 && (
-              <tr><td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#94a3b8' }}>Sem coletas no período.</td></tr>
+              <tr><td colSpan={8} style={{ ...tdStyle, textAlign: 'center', color: '#94a3b8' }}>Sem coletas no período.</td></tr>
             )}
           </tbody>
         </table>
@@ -598,6 +600,7 @@ function PatioClientes({ data, coletas, dateFrom, dateTo }: { data: PatioReport[
         <thead>
           <tr style={{ background: '#f8fafc' }}>
             <th style={thStyle}>Cliente</th>
+            <th style={thStyle}>CNPJ</th>
             <th style={{ ...thStyle, textAlign: 'right' }}>Coletas</th>
             <th style={{ ...thStyle, textAlign: 'right' }}>Média (dias)</th>
             <th style={{ ...thStyle, textAlign: 'right' }}>Máx (dias)</th>
@@ -607,8 +610,9 @@ function PatioClientes({ data, coletas, dateFrom, dateTo }: { data: PatioReport[
         </thead>
         <tbody>
           {data.map((r) => (
-            <tr key={r.cliente} style={{ borderTop: '1px solid #f1f5f9' }}>
+            <tr key={`${r.cnpj || ''}||${r.cliente}`} style={{ borderTop: '1px solid #f1f5f9' }}>
               <td style={{ ...tdStyle, fontWeight: 600 }}>{r.cliente}</td>
+              <td style={tdStyle}>{r.cnpj || '-'}</td>
               <td style={{ ...tdStyle, textAlign: 'right' }}>{r.count}</td>
               <td style={{ ...tdStyle, textAlign: 'right', color: r.mediaDias > 15 ? '#dc2626' : r.mediaDias > 7 ? '#f59e0b' : '#334155' }}>
                 {fmtDec.format(r.mediaDias)}

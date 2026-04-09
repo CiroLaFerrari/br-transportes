@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
         entradaPatioAt: true,
         embarqueAt: true,
         fimPatioAt: true,
-        Cliente: { select: { razao: true } },
+        Cliente: { select: { razao: true, cnpj: true } },
       },
     });
 
@@ -81,6 +81,7 @@ export async function GET(req: NextRequest) {
         uf: c.uf,
         status: c.status,
         cliente: c.Cliente?.razao || '—',
+        cnpj: c.Cliente?.cnpj || null,
         pesoTotalKg: c.pesoTotalKg,
         valorFrete: c.valorFrete,
         entradaPatioAt: c.entradaPatioAt,
@@ -106,13 +107,12 @@ export async function GET(req: NextRequest) {
     const minDias = leadTimes.length > 0 ? Math.min(...leadTimes) : null;
 
     // Distribuição por faixa
-    const faixas = { ate3: 0, ate7: 0, ate15: 0, ate30: 0, acima30: 0 };
+    const faixas = { ate3: 0, ate7: 0, ate15: 0, acima15: 0 };
     for (const d of leadTimes) {
       if (d <= 3) faixas.ate3++;
       else if (d <= 7) faixas.ate7++;
       else if (d <= 15) faixas.ate15++;
-      else if (d <= 30) faixas.ate30++;
-      else faixas.acima30++;
+      else faixas.acima15++;
     }
 
     // Análise por UF
@@ -134,21 +134,22 @@ export async function GET(req: NextRequest) {
       }))
       .sort((a, b) => b.count - a.count);
 
-    // Análise por cliente
-    const porCliente: Record<string, { count: number; somaDias: number; maxDias: number; valorFrete: number }> = {};
+    // Análise por cliente (agrupado por CNPJ + nome)
+    const porCliente: Record<string, { cnpj: string | null; count: number; somaDias: number; maxDias: number; valorFrete: number }> = {};
     for (const r of rows) {
-      const nome = r.cliente;
-      if (!porCliente[nome]) porCliente[nome] = { count: 0, somaDias: 0, maxDias: 0, valorFrete: 0 };
-      porCliente[nome].count++;
-      porCliente[nome].valorFrete += r.valorFrete ?? 0;
+      const key = `${r.cnpj || ''}||${r.cliente}`;
+      if (!porCliente[key]) porCliente[key] = { cnpj: r.cnpj, count: 0, somaDias: 0, maxDias: 0, valorFrete: 0 };
+      porCliente[key].count++;
+      porCliente[key].valorFrete += r.valorFrete ?? 0;
       if (r.leadTimeDias != null) {
-        porCliente[nome].somaDias += r.leadTimeDias;
-        if (r.leadTimeDias > porCliente[nome].maxDias) porCliente[nome].maxDias = r.leadTimeDias;
+        porCliente[key].somaDias += r.leadTimeDias;
+        if (r.leadTimeDias > porCliente[key].maxDias) porCliente[key].maxDias = r.leadTimeDias;
       }
     }
     const analiseCliente = Object.entries(porCliente)
-      .map(([cliente, v]) => ({
-        cliente,
+      .map(([key, v]) => ({
+        cliente: key.split('||')[1],
+        cnpj: v.cnpj,
         count: v.count,
         mediaDias: v.count > 0 ? Math.round((v.somaDias / v.count) * 100) / 100 : 0,
         maxDias: v.maxDias,

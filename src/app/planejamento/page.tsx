@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import LeafletMap from '@/components/LeafletMap';
+import GoogleMap from '@/components/GoogleMap';
 
 /** =========================
  *  Types
@@ -786,6 +786,75 @@ export default function PlanejamentoPage() {
       setMapLines(lines);
 
       if (!planName.trim()) setPlanName(defaultPlanName(origin, destinos));
+
+      setPlanId(null);
+      setCostResult(null);
+      setMetaSavedMsg('');
+      setParadas([]);
+      setOneClickMsg('');
+      setPatioSelected({});
+      setCloseMsg('');
+      setStatus('DRAFT');
+      setMetricasMap({});
+      setMetricasErr(null);
+    } catch (e: any) {
+      setError(e?.message || 'Erro inesperado');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function otimizarECalcular() {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const dests = destinos.split('\n').map((s) => s.trim()).filter(Boolean);
+      if (!origin.trim() || dests.length === 0) {
+        throw new Error('Informe origem e ao menos 1 destino.');
+      }
+
+      // 1) Otimizar ordem via TSP
+      const optRes = await fetch('/api/planejamentos/otimizar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ origin: origin.trim(), destinos: dests }),
+      });
+      const optJ = await optRes.json();
+      if (!optRes.ok) throw new Error(optJ?.error || 'Falha ao otimizar rota');
+
+      const orderedStops: string[] = optJ.orderedStops || dests;
+      setDestinos(orderedStops.join('\n'));
+
+      // 2) Calcular rota na ordem otimizada
+      const places = [origin, ...orderedStops];
+      const res = await fetch('/api/maps/route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ places }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.error || 'Falha ao calcular rota');
+
+      const resp: ApiResp = {
+        points: (j.points || []) as ApiPoint[],
+        legs: (j.legs || []) as ApiLeg[],
+        total_km: Number(j.total_km),
+        total_dur_min: Number(j.total_dur_min),
+        geojson: j.geojson,
+      };
+      setData(resp);
+
+      const pts = (resp.points || []).map((p) => ({
+        label: p.label,
+        coord: [p.lon, p.lat] as [number, number],
+      }));
+      const lines = (resp.geojson?.features || []).map((f: any) => f?.geometry).filter(Boolean);
+
+      setMapPoints(pts);
+      setMapLines(lines);
+
+      if (!planName.trim()) setPlanName(defaultPlanName(origin, orderedStops.join('\n')));
 
       setPlanId(null);
       setCostResult(null);
@@ -1889,6 +1958,10 @@ export default function PlanejamentoPage() {
               {loading ? 'Calculando…' : 'Calcular km'}
             </button>
 
+            <button onClick={otimizarECalcular} disabled={loading} style={{ ...btn, background: '#F5BE16', color: '#1A4A1A', padding: '8px 14px', fontWeight: 700, opacity: loading ? 0.7 : 1 }} title="Reordena destinos pela rota mais curta (TSP) e calcula km">
+              {loading ? 'Otimizando…' : 'Otimizar melhor rota'}
+            </button>
+
             <button
               onClick={exportarXlsx}
               disabled={!data || exporting}
@@ -2498,7 +2571,7 @@ export default function PlanejamentoPage() {
       <div style={{ marginTop: 24 }}>
         <h2 style={{ fontSize: 18, fontWeight: 900, marginBottom: 8, color: '#1A4A1A' }}>Mapa</h2>
         <div style={{ height: 480, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', background: '#ffffff' }}>
-          {mapPoints.length > 0 && <LeafletMap points={mapPoints} lines={mapLines} />}
+          {mapPoints.length > 0 && <GoogleMap points={mapPoints} lines={mapLines} />}
         </div>
       </div>
     </div>

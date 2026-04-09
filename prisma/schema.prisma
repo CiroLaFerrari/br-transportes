@@ -61,6 +61,8 @@ model Veiculo {
   licenciamentoVencimento DateTime?
   documentosUrl           String?
   documentosVencimento    DateTime?
+  tacografoUrl            String?
+  tacografoVencimento     DateTime?
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @updatedAt
   Planejamento            Planejamento[]

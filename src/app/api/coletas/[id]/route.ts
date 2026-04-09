@@ -66,6 +66,98 @@ export async function GET(_req: Request, context: RouteContext) {
     const msAteAgora = entrada ? diffMs(now, entrada) : null;
     const msFinal = entrada && fim ? diffMs(fim, entrada) : null;
 
+    // Representatividade: find planejamentos this coleta belongs to
+    const representatividade: any[] = [];
+    try {
+      const paradasVinculadas = await prisma.parada.findMany({
+        where: { coletaId },
+        select: { planejamentoId: true },
+      });
+      const planIds = Array.from(new Set(
+        paradasVinculadas.map(p => p.planejamentoId).filter((v): v is string => Boolean(v))
+      ));
+
+      if (planIds.length > 0) {
+        for (const planId of planIds) {
+          const plan = await prisma.planejamento.findUnique({
+            where: { id: planId },
+            select: { id: true, name: true, veiculoId: true },
+          });
+          if (!plan) continue;
+
+          const allParadas = await prisma.parada.findMany({
+            where: { planejamentoId: planId },
+            select: { coletaId: true },
+          });
+          const allColetaIds = Array.from(new Set(
+            allParadas.map(p => p.coletaId).filter(Boolean)
+          ));
+
+          const allColetas = allColetaIds.length
+            ? await prisma.coleta.findMany({
+                where: { id: { in: allColetaIds } },
+                select: { id: true, nf: true, pesoTotalKg: true, valorFrete: true },
+              })
+            : [];
+
+          const totalPeso = allColetas.reduce((s, c) => s + (c.pesoTotalKg ?? 0), 0);
+          const totalFrete = allColetas.reduce((s, c) => s + (c.valorFrete ?? 0), 0);
+
+          const thisPeso = coleta.pesoTotalKg ?? 0;
+          const thisFrete = coleta.valorFrete ?? 0;
+
+          // Vehicle capacity
+          let veiculoCapKg: number | null = null;
+          let veiculoCapM3: number | null = null;
+          let veiculoPlaca: string | null = null;
+          if (plan.veiculoId) {
+            const v = await prisma.veiculo.findUnique({
+              where: { id: plan.veiculoId },
+              select: { placa: true, capacidadeKg: true, capacidadeM3: true },
+            });
+            if (v) {
+              veiculoPlaca = v.placa;
+              veiculoCapKg = v.capacidadeKg;
+              veiculoCapM3 = v.capacidadeM3;
+            }
+          }
+
+          representatividade.push({
+            planejamentoId: planId,
+            planejamentoName: plan.name,
+            totalColetas: allColetas.length,
+            totalPesoKg: totalPeso,
+            totalValorFrete: totalFrete,
+            estaNF: {
+              pesoKg: thisPeso,
+              valorFrete: thisFrete,
+              pctPeso: totalPeso > 0 ? Math.round((thisPeso / totalPeso) * 10000) / 100 : null,
+              pctFrete: totalFrete > 0 ? Math.round((thisFrete / totalFrete) * 10000) / 100 : null,
+            },
+            veiculo: veiculoPlaca ? {
+              placa: veiculoPlaca,
+              capacidadeKg: veiculoCapKg,
+              capacidadeM3: veiculoCapM3,
+              pctCapacidadePeso: veiculoCapKg && totalPeso > 0
+                ? Math.round((totalPeso / veiculoCapKg) * 10000) / 100
+                : null,
+            } : null,
+            coletas: allColetas.map(c => ({
+              id: c.id,
+              nf: c.nf,
+              pesoKg: c.pesoTotalKg ?? 0,
+              valorFrete: c.valorFrete ?? 0,
+              pctPeso: totalPeso > 0 ? Math.round(((c.pesoTotalKg ?? 0) / totalPeso) * 10000) / 100 : null,
+              pctFrete: totalFrete > 0 ? Math.round(((c.valorFrete ?? 0) / totalFrete) * 10000) / 100 : null,
+            })),
+          });
+        }
+      }
+    } catch (repErr) {
+      // non-critical, don't break the response
+      console.error('representatividade calc error:', repErr);
+    }
+
     return json({
       ok: true,
       coleta,
@@ -79,6 +171,7 @@ export async function GET(_req: Request, context: RouteContext) {
         horasFinal: msFinal != null ? msToHours(msFinal) : null,
         diasFinal: msFinal != null ? msToDays(msFinal) : null,
       },
+      representatividade,
     });
   } catch (e: any) {
     console.error('GET /api/coletas/[id] error:', e);
