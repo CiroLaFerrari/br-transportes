@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * Caso a API key não esteja configurada, usa estimativa heurística baseada na distância.
  */
 
-const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 
 interface Point {
   lat: number;

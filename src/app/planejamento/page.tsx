@@ -1185,7 +1185,43 @@ export default function PlanejamentoPage() {
       setParadas(arr);
       setParadasInfo('Paradas otimizadas (ordem sugerida pelo sistema).');
 
-      if (arr.length > 0) refreshMapFromParadas(arr);
+      // Recalculate actual road route for the map (not just straight lines)
+      if (arr.length > 0) {
+        const orig = origin.trim() || 'São Carlos, SP, Brasil';
+        const dests = arr.map((p) => {
+          const label = p.label || '';
+          return label.includes('/') ? label.replace(/\s*\/\s*/, ', ').trim() + ', Brasil' : label + ', Brasil';
+        });
+        try {
+          const routeRes = await fetch('/api/maps/route', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ places: [orig, ...dests] }),
+          });
+          const routeJ = await routeRes.json();
+          if (routeRes.ok && routeJ.points) {
+            const resp: ApiResp = {
+              points: (routeJ.points || []) as ApiPoint[],
+              legs: (routeJ.legs || []) as ApiLeg[],
+              total_km: Number(routeJ.total_km),
+              total_dur_min: Number(routeJ.total_dur_min),
+              geojson: routeJ.geojson,
+            };
+            setData(resp);
+            const pts = (resp.points || []).map((p) => ({
+              label: p.label,
+              coord: [p.lon, p.lat] as [number, number],
+            }));
+            const geoLines = (resp.geojson?.features || []).map((f: any) => f?.geometry).filter(Boolean);
+            setMapPoints(pts);
+            setMapLines(geoLines);
+          } else {
+            refreshMapFromParadas(arr);
+          }
+        } catch {
+          refreshMapFromParadas(arr);
+        }
+      }
 
       const ids = Array.from(new Set(arr.map((p) => p.coletaId).filter(Boolean)));
       if (ids.length) void loadMetricas(ids);
@@ -2059,6 +2095,195 @@ export default function PlanejamentoPage() {
 
       {error && <div style={{ marginTop: 12, color: '#b91c1c', fontSize: 14 }}>{error}</div>}
 
+      {/* PARADAS + BUSCA DE COLETAS */}
+      {planId && (
+        <div style={sectionCard}>
+          <h2 style={{ fontSize: 18, fontWeight: 900, marginBottom: 8, color: '#1A4A1A' }}>Paradas (coletas vinculadas)</h2>
+
+          {paradas.length > 0 && (
+            <div style={{ marginBottom: 10, display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12 }}>
+              <span style={{ padding: '2px 10px', borderRadius: 999, background: '#e2e8f0', color: '#0f172a' }}>Total: {execSummary.total}</span>
+              <span style={{ padding: '2px 10px', borderRadius: 999, background: '#e5e7eb', color: '#4b5563' }}>Pendente: {execSummary.pend}</span>
+              <span style={{ padding: '2px 10px', borderRadius: 999, background: '#fef3c7', color: '#92400e' }}>Em atendimento: {execSummary.emAt}</span>
+              <span style={{ padding: '2px 10px', borderRadius: 999, background: '#dcfce7', color: '#166534' }}>Entregue: {execSummary.ent}</span>
+              <span style={{ padding: '2px 10px', borderRadius: 999, background: '#fee2e2', color: '#991b1b' }}>Falha: {execSummary.falha}</span>
+              {execTravado && <span style={{ padding: '2px 10px', borderRadius: 999, background: '#f97316', color: '#1e293b', fontWeight: 600 }}>Execução em andamento — alterações estruturais bloqueadas.</span>}
+            </div>
+          )}
+
+          <div style={{ marginBottom: 12 }}>
+            <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Buscar coletas para vincular</h3>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+              <input value={coletasBuscaQ} onChange={(e) => setColetasBuscaQ(e.target.value)} placeholder="Buscar por NF, cidade ou cliente" style={{ ...inputStyle, maxWidth: 280 }} />
+              <select value={coletasBuscaLimit} onChange={(e) => setColetasBuscaLimit(Number(e.target.value))} style={{ ...inputStyle, width: 90 } as any}>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+              <button onClick={carregarColetas} disabled={coletasBuscaLoading} style={{ ...btn, background: '#2563eb', color: 'white', opacity: coletasBuscaLoading ? 0.7 : 1 }}>
+                {coletasBuscaLoading ? 'Carregando…' : 'Carregar coletas'}
+              </button>
+            </div>
+            {coletasBuscaErro && <div style={{ color: '#b91c1c', marginBottom: 8 }}>{coletasBuscaErro}</div>}
+
+            <table style={{ width: '100%', borderCollapse: 'collapse', background: '#ffffff', marginBottom: 8 }}>
+              <thead>
+                <tr>
+                  <th style={th}>NF</th>
+                  <th style={th}>Cliente</th>
+                  <th style={th}>Cidade/UF</th>
+                  <th style={th}>Peso (kg)</th>
+                  <th style={th}>Frete (R$)</th>
+                  <th style={th}>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {coletas.map((c) => (
+                  <tr key={c.id}>
+                    <td style={td}>{c.nf}</td>
+                    <td style={td}>{c.Cliente?.razao ?? '-'}</td>
+                    <td style={td}>
+                      {c.cidade} / {c.uf}
+                    </td>
+                    <td style={tdNum}>{c.pesoTotalKg ?? '-'}</td>
+                    <td style={tdNum}>{c.valorFrete ?? '-'}</td>
+                    <td style={td}>
+                      <button onClick={() => adicionarIdColeta(c.id)} style={{ ...btn, background: '#0ea5e9', color: '#0f172a' }}>
+                        Adicionar ID
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {coletas.length === 0 && !coletasBuscaLoading && (
+                  <tr>
+                    <td style={td} colSpan={6}>
+                      (Nenhuma coleta carregada)
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ display: 'grid', gap: 8, gridTemplateColumns: '1fr', maxWidth: 1000 }}>
+            <label style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={labelStyle}>IDs de coletas (separe por espaço, vírgula ou quebra de linha)</span>
+              <textarea value={coletaIdsText} onChange={(e) => setColetaIdsText(e.target.value)} rows={2} style={{ ...inputStyle, minHeight: 60 }} placeholder={'cmXXXXXXXX1 cmYYYYYYYY2\ncmZZZZZZZZ3'} />
+            </label>
+          </div>
+
+          {/* Origem para cálculo de rota */}
+          <div style={{ marginTop: 10, marginBottom: 6, display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={labelStyle}>Origem (pátio)</span>
+              <input value={origin} onChange={(e) => setOrigin(e.target.value)} style={{ ...inputStyle, width: 280 }} placeholder="Ex.: São Carlos, SP, Brasil" />
+            </label>
+            <button onClick={calcular} disabled={loading || paradas.length === 0} style={{ ...btn, background: '#2563eb', color: 'white', opacity: loading || paradas.length === 0 ? 0.7 : 1 }} title="Calcula km e rota para as paradas vinculadas">
+              {loading ? 'Calculando…' : 'Calcular rota'}
+            </button>
+            <button onClick={otimizarECalcular} disabled={loading || paradas.length === 0} style={{ ...btn, background: '#F5BE16', color: '#1A4A1A', fontWeight: 700, opacity: loading || paradas.length === 0 ? 0.7 : 1 }} title="Reordena paradas pela rota mais curta e calcula km">
+              {loading ? 'Otimizando…' : 'Otimizar melhor rota'}
+            </button>
+          </div>
+
+          <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={loadParadas} disabled={paradasLoading} style={{ ...btn, background: '#64748b', color: 'white', opacity: paradasLoading ? 0.7 : 1 }}>
+              {paradasLoading ? 'Atualizando…' : 'Atualizar (carregar)'}
+            </button>
+
+            <button onClick={vincularColetas} disabled={paradasLoading} style={{ ...btn, background: '#7c3aed', color: 'white', opacity: paradasLoading ? 0.7 : 1 }}>
+              Vincular coletas
+            </button>
+
+            <button onClick={recalcularParadas} disabled={paradasLoading} style={{ ...btn, background: '#22c55e', color: '#1e293b', opacity: paradasLoading ? 0.7 : 1 }}>
+              Recalcular trechos
+            </button>
+
+            <button onClick={otimizarParadas} disabled={paradasLoading} style={{ ...btn, background: '#f97316', color: '#1e293b', opacity: paradasLoading ? 0.7 : 1 }}>
+              Otimizar ordem (km)
+            </button>
+
+            <button onClick={oneClickGerarRotaEAbrirScan} disabled={paradasLoading || oneClickLoading} style={{ ...btn, background: '#1A4A1A', color: 'white', padding: '8px 14px', opacity: paradasLoading || oneClickLoading ? 0.7 : 1 }} title="Gera/normaliza a rota do planejamento (resetando status das paradas) e abre a tela /scan já com rotaId">
+              {oneClickLoading ? 'Preparando…' : '1 clique: gerar rota + abrir /scan'}
+            </button>
+
+            {oneClickMsg && <span style={{ alignSelf: 'center', color: '#16a34a', fontSize: 13 }}>{oneClickMsg}</span>}
+          </div>
+
+          {(paradasError || paradasInfo) && (
+            <div style={{ marginTop: 10 }}>
+              {paradasError && <div style={{ color: '#b91c1c' }}>{paradasError}</div>}
+              {paradasInfo && <div style={{ color: '#16a34a' }}>{paradasInfo}</div>}
+            </div>
+          )}
+
+          <div style={{ marginTop: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', background: '#ffffff' }}>
+              <thead>
+                <tr>
+                  <th style={th}>#</th>
+                  <th style={th}>Label</th>
+                  <th style={th}>NF</th>
+                  <th style={th}>Peso</th>
+                  <th style={th}>Frete (R$)</th>
+                  <th style={th}>Cliente</th>
+                  <th style={th}>Km (trecho)</th>
+                  <th style={th}>Min (trecho)</th>
+                  <th style={th}>Status</th>
+                  <th style={th}>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paradas.map((p, idx) => {
+                  const coleta = p.Coleta;
+                  const valorFrete = coleta?.valorFrete ?? null;
+                  const pesoKg = coleta?.pesoTotalKg ?? null;
+                  return (
+                  <tr key={p.id}>
+                    <td style={{ ...td, width: 40 }}>{idx + 1}</td>
+                    <td style={td}>{p.label}</td>
+                    <td style={td}>{coleta?.nf ?? '-'}</td>
+                    <td style={tdNum}>{pesoKg != null ? Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(pesoKg) + ' kg' : '-'}</td>
+                    <td style={tdNum}>{valorFrete != null ? Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorFrete) : '-'}</td>
+                    <td style={td}>{coleta?.Cliente?.razao ?? '-'}</td>
+                    <td style={tdNum}>{p.kmTrecho != null ? p.kmTrecho.toFixed(2) : '-'}</td>
+                    <td style={tdNum}>{p.durMinTrecho != null ? p.durMinTrecho : '-'}</td>
+                    <td style={td}>{p.statusExec ?? 'PENDENTE'}</td>
+                    <td style={td}>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => reordenarIndice(idx, -1)} disabled={paradasLoading || idx === 0} style={{ ...btn, background: '#0ea5e9', color: '#1e293b', opacity: paradasLoading || idx === 0 ? 0.6 : 1 }} title="Mover para cima">
+                          ↑
+                        </button>
+                        <button onClick={() => reordenarIndice(idx, +1)} disabled={paradasLoading || idx === paradas.length - 1} style={{ ...btn, background: '#0ea5e9', color: '#1e293b', opacity: paradasLoading || idx === paradas.length - 1 ? 0.6 : 1 }} title="Mover para baixo">
+                          ↓
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  );
+                })}
+                {paradas.length === 0 && (
+                  <tr>
+                    <td style={td} colSpan={10}>
+                      (Sem paradas vinculadas ainda)
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      )}
+
+      {/* MAPA */}
+      <div style={{ marginTop: 24 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 900, marginBottom: 8, color: '#1A4A1A' }}>Mapa</h2>
+        <div style={{ height: 480, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', background: '#ffffff' }}>
+          {mapPoints.length > 0 && <GoogleMap points={mapPoints} lines={mapLines} />}
+        </div>
+      </div>
+
       {/* METADADOS + VIABILIDADE + CAPACIDADE */}
       {(data || planId) && (
         <div style={sectionCard}>
@@ -2455,194 +2680,6 @@ export default function PlanejamentoPage() {
         </div>
       )}
 
-      {/* PARADAS + BUSCA DE COLETAS */}
-      {planId && (
-        <div style={sectionCard}>
-          <h2 style={{ fontSize: 18, fontWeight: 900, marginBottom: 8, color: '#1A4A1A' }}>Paradas (coletas vinculadas)</h2>
-
-          {paradas.length > 0 && (
-            <div style={{ marginBottom: 10, display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12 }}>
-              <span style={{ padding: '2px 10px', borderRadius: 999, background: '#e2e8f0', color: '#0f172a' }}>Total: {execSummary.total}</span>
-              <span style={{ padding: '2px 10px', borderRadius: 999, background: '#e5e7eb', color: '#4b5563' }}>Pendente: {execSummary.pend}</span>
-              <span style={{ padding: '2px 10px', borderRadius: 999, background: '#fef3c7', color: '#92400e' }}>Em atendimento: {execSummary.emAt}</span>
-              <span style={{ padding: '2px 10px', borderRadius: 999, background: '#dcfce7', color: '#166534' }}>Entregue: {execSummary.ent}</span>
-              <span style={{ padding: '2px 10px', borderRadius: 999, background: '#fee2e2', color: '#991b1b' }}>Falha: {execSummary.falha}</span>
-              {execTravado && <span style={{ padding: '2px 10px', borderRadius: 999, background: '#f97316', color: '#1e293b', fontWeight: 600 }}>Execução em andamento — alterações estruturais bloqueadas.</span>}
-            </div>
-          )}
-
-          <div style={{ marginBottom: 12 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Buscar coletas para vincular</h3>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-              <input value={coletasBuscaQ} onChange={(e) => setColetasBuscaQ(e.target.value)} placeholder="Buscar por NF, cidade ou cliente" style={{ ...inputStyle, maxWidth: 280 }} />
-              <select value={coletasBuscaLimit} onChange={(e) => setColetasBuscaLimit(Number(e.target.value))} style={{ ...inputStyle, width: 90 } as any}>
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-              </select>
-              <button onClick={carregarColetas} disabled={coletasBuscaLoading} style={{ ...btn, background: '#2563eb', color: 'white', opacity: coletasBuscaLoading ? 0.7 : 1 }}>
-                {coletasBuscaLoading ? 'Carregando…' : 'Carregar coletas'}
-              </button>
-            </div>
-            {coletasBuscaErro && <div style={{ color: '#b91c1c', marginBottom: 8 }}>{coletasBuscaErro}</div>}
-
-            <table style={{ width: '100%', borderCollapse: 'collapse', background: '#ffffff', marginBottom: 8 }}>
-              <thead>
-                <tr>
-                  <th style={th}>NF</th>
-                  <th style={th}>Cliente</th>
-                  <th style={th}>Cidade/UF</th>
-                  <th style={th}>Peso (kg)</th>
-                  <th style={th}>Frete (R$)</th>
-                  <th style={th}>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {coletas.map((c) => (
-                  <tr key={c.id}>
-                    <td style={td}>{c.nf}</td>
-                    <td style={td}>{c.Cliente?.razao ?? '-'}</td>
-                    <td style={td}>
-                      {c.cidade} / {c.uf}
-                    </td>
-                    <td style={tdNum}>{c.pesoTotalKg ?? '-'}</td>
-                    <td style={tdNum}>{c.valorFrete ?? '-'}</td>
-                    <td style={td}>
-                      <button onClick={() => adicionarIdColeta(c.id)} style={{ ...btn, background: '#0ea5e9', color: '#0f172a' }}>
-                        Adicionar ID
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {coletas.length === 0 && !coletasBuscaLoading && (
-                  <tr>
-                    <td style={td} colSpan={6}>
-                      (Nenhuma coleta carregada)
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div style={{ display: 'grid', gap: 8, gridTemplateColumns: '1fr', maxWidth: 1000 }}>
-            <label style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={labelStyle}>IDs de coletas (separe por espaço, vírgula ou quebra de linha)</span>
-              <textarea value={coletaIdsText} onChange={(e) => setColetaIdsText(e.target.value)} rows={2} style={{ ...inputStyle, minHeight: 60 }} placeholder={'cmXXXXXXXX1 cmYYYYYYYY2\ncmZZZZZZZZ3'} />
-            </label>
-          </div>
-
-          {/* Origem para cálculo de rota */}
-          <div style={{ marginTop: 10, marginBottom: 6, display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={labelStyle}>Origem (pátio)</span>
-              <input value={origin} onChange={(e) => setOrigin(e.target.value)} style={{ ...inputStyle, width: 280 }} placeholder="Ex.: São Carlos, SP, Brasil" />
-            </label>
-            <button onClick={calcular} disabled={loading || paradas.length === 0} style={{ ...btn, background: '#2563eb', color: 'white', opacity: loading || paradas.length === 0 ? 0.7 : 1 }} title="Calcula km e rota para as paradas vinculadas">
-              {loading ? 'Calculando…' : 'Calcular rota'}
-            </button>
-            <button onClick={otimizarECalcular} disabled={loading || paradas.length === 0} style={{ ...btn, background: '#F5BE16', color: '#1A4A1A', fontWeight: 700, opacity: loading || paradas.length === 0 ? 0.7 : 1 }} title="Reordena paradas pela rota mais curta e calcula km">
-              {loading ? 'Otimizando…' : 'Otimizar melhor rota'}
-            </button>
-          </div>
-
-          <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={loadParadas} disabled={paradasLoading} style={{ ...btn, background: '#64748b', color: 'white', opacity: paradasLoading ? 0.7 : 1 }}>
-              {paradasLoading ? 'Atualizando…' : 'Atualizar (carregar)'}
-            </button>
-
-            <button onClick={vincularColetas} disabled={paradasLoading} style={{ ...btn, background: '#7c3aed', color: 'white', opacity: paradasLoading ? 0.7 : 1 }}>
-              Vincular coletas
-            </button>
-
-            <button onClick={recalcularParadas} disabled={paradasLoading} style={{ ...btn, background: '#22c55e', color: '#1e293b', opacity: paradasLoading ? 0.7 : 1 }}>
-              Recalcular trechos
-            </button>
-
-            <button onClick={otimizarParadas} disabled={paradasLoading} style={{ ...btn, background: '#f97316', color: '#1e293b', opacity: paradasLoading ? 0.7 : 1 }}>
-              Otimizar ordem (km)
-            </button>
-
-            <button onClick={oneClickGerarRotaEAbrirScan} disabled={paradasLoading || oneClickLoading} style={{ ...btn, background: '#1A4A1A', color: 'white', padding: '8px 14px', opacity: paradasLoading || oneClickLoading ? 0.7 : 1 }} title="Gera/normaliza a rota do planejamento (resetando status das paradas) e abre a tela /scan já com rotaId">
-              {oneClickLoading ? 'Preparando…' : '1 clique: gerar rota + abrir /scan'}
-            </button>
-
-            {oneClickMsg && <span style={{ alignSelf: 'center', color: '#16a34a', fontSize: 13 }}>{oneClickMsg}</span>}
-          </div>
-
-          {(paradasError || paradasInfo) && (
-            <div style={{ marginTop: 10 }}>
-              {paradasError && <div style={{ color: '#b91c1c' }}>{paradasError}</div>}
-              {paradasInfo && <div style={{ color: '#16a34a' }}>{paradasInfo}</div>}
-            </div>
-          )}
-
-          <div style={{ marginTop: 12 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', background: '#ffffff' }}>
-              <thead>
-                <tr>
-                  <th style={th}>#</th>
-                  <th style={th}>Label</th>
-                  <th style={th}>NF</th>
-                  <th style={th}>Peso</th>
-                  <th style={th}>Frete (R$)</th>
-                  <th style={th}>Cliente</th>
-                  <th style={th}>Km (trecho)</th>
-                  <th style={th}>Min (trecho)</th>
-                  <th style={th}>Status</th>
-                  <th style={th}>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paradas.map((p, idx) => {
-                  const coleta = p.Coleta;
-                  const valorFrete = coleta?.valorFrete ?? null;
-                  const pesoKg = coleta?.pesoTotalKg ?? null;
-                  return (
-                  <tr key={p.id}>
-                    <td style={{ ...td, width: 40 }}>{idx + 1}</td>
-                    <td style={td}>{p.label}</td>
-                    <td style={td}>{coleta?.nf ?? '-'}</td>
-                    <td style={tdNum}>{pesoKg != null ? Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(pesoKg) + ' kg' : '-'}</td>
-                    <td style={tdNum}>{valorFrete != null ? Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorFrete) : '-'}</td>
-                    <td style={td}>{coleta?.Cliente?.razao ?? '-'}</td>
-                    <td style={tdNum}>{p.kmTrecho != null ? p.kmTrecho.toFixed(2) : '-'}</td>
-                    <td style={tdNum}>{p.durMinTrecho != null ? p.durMinTrecho : '-'}</td>
-                    <td style={td}>{p.statusExec ?? 'PENDENTE'}</td>
-                    <td style={td}>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => reordenarIndice(idx, -1)} disabled={paradasLoading || idx === 0} style={{ ...btn, background: '#0ea5e9', color: '#1e293b', opacity: paradasLoading || idx === 0 ? 0.6 : 1 }} title="Mover para cima">
-                          ↑
-                        </button>
-                        <button onClick={() => reordenarIndice(idx, +1)} disabled={paradasLoading || idx === paradas.length - 1} style={{ ...btn, background: '#0ea5e9', color: '#1e293b', opacity: paradasLoading || idx === paradas.length - 1 ? 0.6 : 1 }} title="Mover para baixo">
-                          ↓
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                  );
-                })}
-                {paradas.length === 0 && (
-                  <tr>
-                    <td style={td} colSpan={10}>
-                      (Sem paradas vinculadas ainda)
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-        </div>
-      )}
-
-      {/* MAPA */}
-      <div style={{ marginTop: 24 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 900, marginBottom: 8, color: '#1A4A1A' }}>Mapa</h2>
-        <div style={{ height: 480, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', background: '#ffffff' }}>
-          {mapPoints.length > 0 && <GoogleMap points={mapPoints} lines={mapLines} />}
-        </div>
-      </div>
     </div>
   );
 }
