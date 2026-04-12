@@ -757,7 +757,23 @@ export default function PlanejamentoPage() {
     setError(null);
 
     try {
-      const places = [origin, ...destinos.split('\n').map((s) => s.trim()).filter(Boolean)];
+      // Build places from destinos textarea OR from paradas labels
+      let dests = destinos.split('\n').map((s) => s.trim()).filter(Boolean);
+      if (dests.length === 0 && paradas.length > 0) {
+        dests = paradas.map((p) => {
+          const label = p.label || '';
+          // "Cidade / UF" → "Cidade, UF, Brasil"
+          return label.includes('/') ? label.replace(/\s*\/\s*/, ', ').trim() + ', Brasil' : label + ', Brasil';
+        });
+        setDestinos(dests.join('\n'));
+      }
+
+      const orig = origin.trim() || 'São Carlos, SP, Brasil';
+      if (!origin.trim()) setOrigin(orig);
+
+      const places = [orig, ...dests];
+      if (places.length < 2) throw new Error('Adicione paradas antes de calcular a rota.');
+
       const res = await fetch('/api/maps/route', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -785,18 +801,7 @@ export default function PlanejamentoPage() {
       setMapPoints(pts);
       setMapLines(lines);
 
-      if (!planName.trim()) setPlanName(defaultPlanName(origin, destinos));
-
-      setPlanId(null);
-      setCostResult(null);
-      setMetaSavedMsg('');
-      setParadas([]);
-      setOneClickMsg('');
-      setPatioSelected({});
-      setCloseMsg('');
-      setStatus('DRAFT');
-      setMetricasMap({});
-      setMetricasErr(null);
+      if (!planName.trim()) setPlanName(defaultPlanName(orig, dests.join('\n')));
     } catch (e: any) {
       setError(e?.message || 'Erro inesperado');
     } finally {
@@ -809,16 +814,25 @@ export default function PlanejamentoPage() {
     setError(null);
 
     try {
-      const dests = destinos.split('\n').map((s) => s.trim()).filter(Boolean);
-      if (!origin.trim() || dests.length === 0) {
-        throw new Error('Informe origem e ao menos 1 destino.');
+      // Build dests from textarea OR from paradas
+      let dests = destinos.split('\n').map((s) => s.trim()).filter(Boolean);
+      if (dests.length === 0 && paradas.length > 0) {
+        dests = paradas.map((p) => {
+          const label = p.label || '';
+          return label.includes('/') ? label.replace(/\s*\/\s*/, ', ').trim() + ', Brasil' : label + ', Brasil';
+        });
       }
+
+      const orig = origin.trim() || 'São Carlos, SP, Brasil';
+      if (!origin.trim()) setOrigin(orig);
+
+      if (dests.length === 0) throw new Error('Adicione paradas antes de otimizar.');
 
       // 1) Otimizar ordem via TSP
       const optRes = await fetch('/api/planejamentos/otimizar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ origin: origin.trim(), destinos: dests }),
+        body: JSON.stringify({ origin: orig, destinos: dests }),
       });
       const optJ = await optRes.json();
       if (!optRes.ok) throw new Error(optJ?.error || 'Falha ao otimizar rota');
@@ -827,7 +841,7 @@ export default function PlanejamentoPage() {
       setDestinos(orderedStops.join('\n'));
 
       // 2) Calcular rota na ordem otimizada
-      const places = [origin, ...orderedStops];
+      const places = [orig, ...orderedStops];
       const res = await fetch('/api/maps/route', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -854,18 +868,7 @@ export default function PlanejamentoPage() {
       setMapPoints(pts);
       setMapLines(lines);
 
-      if (!planName.trim()) setPlanName(defaultPlanName(origin, orderedStops.join('\n')));
-
-      setPlanId(null);
-      setCostResult(null);
-      setMetaSavedMsg('');
-      setParadas([]);
-      setOneClickMsg('');
-      setPatioSelected({});
-      setCloseMsg('');
-      setStatus('DRAFT');
-      setMetricasMap({});
-      setMetricasErr(null);
+      if (!planName.trim()) setPlanName(defaultPlanName(orig, orderedStops.join('\n')));
     } catch (e: any) {
       setError(e?.message || 'Erro inesperado');
     } finally {
@@ -1407,75 +1410,34 @@ export default function PlanejamentoPage() {
       setParadasError(null);
       setError(null);
 
-      // 1) Gera destinos e calcula rota automaticamente
       const rows = patioSelectedRows;
-      const seen = new Set<string>();
-      const cities: string[] = [];
-      for (const c of rows) {
-        const cidade = String(c.cidade || '').trim();
-        const uf = String(c.uf || '').trim().toUpperCase();
-        if (!cidade || uf.length !== 2) continue;
-        const key = `${cidade.toUpperCase()}, ${uf}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        cities.push(`${cidade}, ${uf}, Brasil`);
-      }
 
-      if (cities.length === 0) {
-        throw new Error('Nenhuma cidade válida encontrada nas coletas selecionadas.');
-      }
-
-      const orig = origin.trim() || 'São Carlos, SP, Brasil';
-      setOrigin(orig);
-      setDestinos(cities.join('\n'));
-
-      // 2) Calcular rota
-      const places = [orig, ...cities];
-      const routeRes = await fetch('/api/maps/route', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ places }),
-      });
-      const routeJ = await routeRes.json();
-      if (!routeRes.ok) throw new Error(routeJ?.error || 'Falha ao calcular rota');
-
-      const resp: ApiResp = {
-        points: (routeJ.points || []) as ApiPoint[],
-        legs: (routeJ.legs || []) as ApiLeg[],
-        total_km: Number(routeJ.total_km),
-        total_dur_min: Number(routeJ.total_dur_min),
-        geojson: routeJ.geojson,
-      };
-      setData(resp);
-
-      const pts = (resp.points || []).map((p) => ({
-        label: p.label,
-        coord: [p.lon, p.lat] as [number, number],
-      }));
-      const lines = (resp.geojson?.features || []).map((f: any) => f?.geometry).filter(Boolean);
-      setMapPoints(pts);
-      setMapLines(lines);
-
-      if (!planName.trim()) setPlanName(defaultPlanName(orig, cities.join('\n')));
-
-      // 3) Garantir planejamento
+      // 1) Garantir planejamento existe
       let pid = planId;
       if (!pid) {
-        const name = (planName || defaultPlanName(orig, cities.join('\n'))).trim();
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mi = String(now.getMinutes()).padStart(2, '0');
+        const name = planName.trim() || `Planejamento ${yyyy}-${mm}-${dd} ${hh}${mi}`;
+
         const planRes = await fetch('/api/planejamentos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, payload: resp }),
+          body: JSON.stringify({ name, payload: {} }),
         });
         const planJ = await planRes.json();
         if (!planRes.ok) throw new Error(planJ?.error || 'Falha ao criar planejamento');
         pid = planJ.id as string;
         setPlanId(pid);
         setPlanName(name);
+        setData({ points: [], legs: [], total_km: 0, total_dur_min: 0, geojson: { type: 'FeatureCollection', features: [] } });
         await loadPlans();
       }
 
-      // 4) Vincular coletas
+      // 2) Vincular coletas como paradas
       const coletaIds = rows.map((c) => c.id);
       setColetaIdsText(coletaIds.join(' '));
       const vincRes = await fetch(`/api/planejamentos/${pid}/vincular-coletas`, {
@@ -1486,7 +1448,7 @@ export default function PlanejamentoPage() {
       const vincJ = await vincRes.json();
       if (!vincRes.ok) throw new Error(vincJ?.error || 'Falha ao vincular coletas');
 
-      setParadasInfo(`${rows.length} coleta(s) vinculadas com sucesso! Rota calculada com ${cities.length} destino(s).`);
+      setParadasInfo(`${rows.length} coleta(s) vinculadas como paradas com sucesso!`);
       await loadParadas();
       setPatioSelected({});
     } catch (e: any) {
@@ -1981,7 +1943,7 @@ export default function PlanejamentoPage() {
         </div>
 
         <div style={{ marginTop: 10, color: '#64748b', fontSize: 12 }}>
-          Dica: selecione as coletas e clique em <b>“Adicionar selecionadas (→ IDs)”</b>, depois use <b>“Vincular coletas”</b> na seção de Paradas.
+          Dica: selecione as coletas e clique em <b>”Vincular selecionadas como paradas”</b> para criar o planejamento automaticamente.
         </div>
       </div>
 
@@ -2041,45 +2003,11 @@ export default function PlanejamentoPage() {
         </table>
       </div>
 
-      {/* FORM ROTA */}
-      <div style={{ ...sectionCard }}>
-        <h2 style={{ fontSize: 18, fontWeight: 900, marginBottom: 8, color: '#1A4A1A' }}>Calcular rota</h2>
-        <div style={{ display: 'grid', gap: 8, maxWidth: 1000 }}>
-          <label>
-            <div style={labelStyle}>Origem (pátio/endereço completo)</div>
-            <input value={origin} onChange={(e) => setOrigin(e.target.value)} style={inputStyle} placeholder="Ex.: São Carlos, SP, Brasil" />
-          </label>
-
-          <label>
-            <div style={labelStyle}>Destinos — um por linha</div>
-            <textarea value={destinos} onChange={(e) => setDestinos(e.target.value)} rows={3} style={{ ...inputStyle, minHeight: 80 }} placeholder={'Campinas, SP, Brasil\nFlorianópolis, SC, Brasil'} />
-          </label>
-
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-            <button onClick={calcular} disabled={loading} style={{ ...btn, background: '#2563eb', color: 'white', padding: '8px 14px', opacity: loading ? 0.7 : 1 }}>
-              {loading ? 'Calculando…' : 'Calcular km'}
-            </button>
-
-            <button onClick={otimizarECalcular} disabled={loading} style={{ ...btn, background: '#F5BE16', color: '#1A4A1A', padding: '8px 14px', fontWeight: 700, opacity: loading ? 0.7 : 1 }} title="Reordena destinos pela rota mais curta (TSP) e calcula km">
-              {loading ? 'Otimizando…' : 'Otimizar melhor rota'}
-            </button>
-
-            <button
-              onClick={exportarXlsx}
-              disabled={!data || exporting}
-              style={{ ...btn, background: '#10b981', color: 'white', padding: '8px 14px', cursor: !data ? 'not-allowed' : 'pointer', opacity: !data || exporting ? 0.7 : 1 }}
-              title={!data ? 'Calcule uma rota para habilitar' : 'Exportar para Excel (.xlsx)'}
-            >
-              {exporting ? 'Gerando .xlsx…' : 'Exportar .xlsx'}
-            </button>
-          </div>
-        </div>
-      </div>
 
       {error && <div style={{ marginTop: 12, color: '#b91c1c', fontSize: 14 }}>{error}</div>}
 
       {/* METADADOS + VIABILIDADE + CAPACIDADE */}
-      {data && (
+      {(data || planId) && (
         <div style={sectionCard}>
           <h2 style={{ fontSize: 18, fontWeight: 900, marginBottom: 8, color: '#1A4A1A' }}>Metadados do Planejamento</h2>
 
@@ -2286,7 +2214,7 @@ export default function PlanejamentoPage() {
           </div>
 
           <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={salvarMetadados} disabled={!data || savingMeta} style={{ ...btn, background: '#f59e0b', color: '#1e293b', padding: '8px 14px', cursor: !data ? 'not-allowed' : 'pointer', opacity: !data || savingMeta ? 0.7 : 1 }}>
+            <button onClick={salvarMetadados} disabled={savingMeta} style={{ ...btn, background: '#f59e0b', color: '#1e293b', padding: '8px 14px', opacity: savingMeta ? 0.7 : 1 }}>
               {savingMeta ? 'Salvando…' : 'Salvar metadados'}
             </button>
 
@@ -2551,7 +2479,21 @@ export default function PlanejamentoPage() {
             </label>
           </div>
 
-          <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {/* Origem para cálculo de rota */}
+          <div style={{ marginTop: 10, marginBottom: 6, display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={labelStyle}>Origem (pátio)</span>
+              <input value={origin} onChange={(e) => setOrigin(e.target.value)} style={{ ...inputStyle, width: 280 }} placeholder="Ex.: São Carlos, SP, Brasil" />
+            </label>
+            <button onClick={calcular} disabled={loading || paradas.length === 0} style={{ ...btn, background: '#2563eb', color: 'white', opacity: loading || paradas.length === 0 ? 0.7 : 1 }} title="Calcula km e rota para as paradas vinculadas">
+              {loading ? 'Calculando…' : 'Calcular rota'}
+            </button>
+            <button onClick={otimizarECalcular} disabled={loading || paradas.length === 0} style={{ ...btn, background: '#F5BE16', color: '#1A4A1A', fontWeight: 700, opacity: loading || paradas.length === 0 ? 0.7 : 1 }} title="Reordena paradas pela rota mais curta e calcula km">
+              {loading ? 'Otimizando…' : 'Otimizar melhor rota'}
+            </button>
+          </div>
+
+          <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={loadParadas} disabled={paradasLoading} style={{ ...btn, background: '#64748b', color: 'white', opacity: paradasLoading ? 0.7 : 1 }}>
               {paradasLoading ? 'Atualizando…' : 'Atualizar (carregar)'}
             </button>
