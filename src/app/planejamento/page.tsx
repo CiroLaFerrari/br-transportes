@@ -1753,7 +1753,10 @@ export default function PlanejamentoPage() {
       if (!res.ok || !j?.ok) throw new Error(j?.error || 'Falha ao fechar carga');
 
       setStatus('PLANNED');
-      setCloseMsg('OK: carga fechada (status PLANNED).');
+      const minutaMsg = j?.minutas?.length
+        ? ` ${j.minutas.length} minuta(s) gerada(s) automaticamente.`
+        : '';
+      setCloseMsg(`OK: carga fechada (status PLANNED).${minutaMsg}`);
 
       await loadPlans();
     } catch (e: any) {
