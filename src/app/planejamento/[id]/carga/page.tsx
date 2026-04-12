@@ -130,8 +130,8 @@ export default function CargaLayoutPage() {
       const color = coletaColorMap.get(box.coletaId) || '#666';
 
       for (let q = 0; q < qty; q++) {
-        const w = box.larguraCm || 100;
-        const h = box.comprimentoCm || 100;
+        const w = box.larguraCm || Math.min(truckW, 80);
+        const h = box.comprimentoCm || Math.min(truckL / 4, 120);
 
         if (shelfX + w > truckW) {
           // New shelf
@@ -164,13 +164,13 @@ export default function CargaLayoutPage() {
 
   const placedBoxes = computeLayout();
 
-  // SVG scale
-  const svgPadding = 20;
-  const scale = Math.min(800 / truckW, 1200 / truckL, 2);
+  // SVG scale - ensure minimum visible size
+  const svgPadding = 30;
+  const targetW = 600; // target width in pixels
+  const scale = Math.max(targetW / truckW, 0.3); // ensure minimum scale
   const svgW = truckW * scale + svgPadding * 2;
   const svgH = truckL * scale + svgPadding * 2;
 
-  const totalPeso = boxes.reduce((acc, b) => acc + (b.volumeM3Total || 0), 0);
   const totalVol = boxes.reduce((acc, b) => acc + (b.volumeM3Total || 0), 0);
   const totalItems = boxes.reduce((acc, b) => acc + (b.quantidade || 1), 0);
 

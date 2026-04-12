@@ -139,21 +139,22 @@ export default function ColetaDetalhePage() {
   const [pesoTotalKg, setPesoTotalKg] = useState('');
 
   const card: React.CSSProperties = {
-    background: '#0f1720',
+    background: '#ffffff',
     border: '1px solid #e2e8f0',
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: 12,
+    padding: 16,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
   };
-  const labelStyle: React.CSSProperties = { marginBottom: 4, color: '#9db0ca', fontSize: 12 };
+  const labelStyle: React.CSSProperties = { marginBottom: 4, color: '#475569', fontSize: 12, fontWeight: 600 };
   const inputStyle: React.CSSProperties = {
     width: '100%',
     padding: 8,
-    background: '#141a22',
-    color: '#eee',
-    border: '1px solid #2a3442',
+    background: '#f8fafc',
+    color: '#1e293b',
+    border: '1px solid #cbd5e1',
     borderRadius: 6,
   };
-  const btn: React.CSSProperties = { padding: '8px 12px', borderRadius: 6, border: 0, cursor: 'pointer' };
+  const btn: React.CSSProperties = { padding: '8px 12px', borderRadius: 6, border: 0, cursor: 'pointer', fontWeight: 600 };
 
   async function loadEventos() {
     if (!id) return;
@@ -313,15 +314,15 @@ export default function ColetaDetalhePage() {
   }
 
   return (
-    <div style={{ maxWidth: 1100, margin: '20px auto', padding: 16 }}>
+    <div style={{ maxWidth: 1100, margin: '20px auto', padding: 16, color: '#1e293b' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Detalhes da Coleta</h1>
-        <Link href="/coletas" style={{ color: '#93c5fd', textDecoration: 'underline' }}>
+        <h1 style={{ fontSize: 22, fontWeight: 900, marginBottom: 8, color: '#1A4A1A' }}>Detalhes da Coleta</h1>
+        <Link href="/coletas" style={{ color: '#1A4A1A', textDecoration: 'underline', fontWeight: 600 }}>
           ← Voltar
         </Link>
       </div>
 
-      {error && <div style={{ color: '#fca5a5', marginBottom: 10 }}>{error}</div>}
+      {error && <div style={{ color: '#dc2626', marginBottom: 10 }}>{error}</div>}
       {loading && <div>Carregando…</div>}
 
       {coleta && (
@@ -330,23 +331,23 @@ export default function ColetaDetalhePage() {
           <div style={{ ...card, marginBottom: 12 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'center' }}>
               <div>
-                <div style={{ fontSize: 12, color: '#9db0ca' }}>Status</div>
-                <div style={{ fontWeight: 900, color: '#e5e7eb' }}>{coleta.status}</div>
+                <div style={{ fontSize: 12, color: '#475569' }}>Status</div>
+                <div style={{ fontWeight: 900, color: '#1e293b' }}>{coleta.status}</div>
               </div>
 
               <div>
-                <div style={{ fontSize: 12, color: '#9db0ca' }}>Entrada no pátio</div>
-                <div style={{ fontWeight: 900, color: '#e5e7eb' }}>{fmt(coleta.entradaPatioAt)}</div>
+                <div style={{ fontSize: 12, color: '#475569' }}>Entrada no pátio</div>
+                <div style={{ fontWeight: 900, color: '#1e293b' }}>{fmt(coleta.entradaPatioAt)}</div>
               </div>
 
               <div>
-                <div style={{ fontSize: 12, color: '#9db0ca' }}>Saída do pátio</div>
-                <div style={{ fontWeight: 900, color: '#e5e7eb' }}>{fmt(coleta.fimPatioAt ?? coleta.embarqueAt)}</div>
+                <div style={{ fontSize: 12, color: '#475569' }}>Saída do pátio</div>
+                <div style={{ fontWeight: 900, color: '#1e293b' }}>{fmt(coleta.fimPatioAt ?? coleta.embarqueAt)}</div>
               </div>
 
               <div>
-                <div style={{ fontSize: 12, color: '#9db0ca' }}>Lead Time Pátio</div>
-                <div style={{ fontWeight: 900, color: '#e5e7eb' }}>{leadLabel}</div>
+                <div style={{ fontSize: 12, color: '#475569' }}>Lead Time Pátio</div>
+                <div style={{ fontWeight: 900, color: '#1e293b' }}>{leadLabel}</div>
                 <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
                   {lead?.fim ? 'Final (entrada → saída)' : 'Parcial (entrada → agora)'}
                 </div>
@@ -357,7 +358,7 @@ export default function ColetaDetalhePage() {
               <button
                 onClick={marcarSaidaPatio}
                 disabled={saving}
-                style={{ ...btn, background: '#22c55e', color: '#0b1220', opacity: saving ? 0.7 : 1 }}
+                style={{ ...btn, background: '#22c55e', color: '#1e293b', opacity: saving ? 0.7 : 1 }}
               >
                 Marcar saída do pátio (agora)
               </button>
@@ -375,11 +376,11 @@ export default function ColetaDetalhePage() {
 
           {/* Dados gerais */}
           <div style={card}>
-            <div style={{ marginBottom: 12, opacity: 0.85, fontSize: 13, color: '#cbd5e1' }}>
+            <div style={{ marginBottom: 12, opacity: 0.85, fontSize: 13, color: '#64748b' }}>
               ID: <code>{coleta.id}</code>
             </div>
 
-            <div style={{ marginBottom: 10, color: '#9db0ca' }}>
+            <div style={{ marginBottom: 10, color: '#475569' }}>
               Cliente: <strong>{coleta.Cliente?.razao || coleta.clienteId}</strong>
             </div>
 
@@ -455,14 +456,14 @@ export default function ColetaDetalhePage() {
 
             {/* Itens */}
             <div style={{ marginTop: 18 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: '#e5e7eb' }}>Itens da Coleta</h3>
+              <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: '#1e293b' }}>Itens da Coleta</h3>
 
               {!coleta.itens || coleta.itens.length === 0 ? (
-                <div style={{ color: '#9db0ca' }}>(Sem itens cadastrados)</div>
+                <div style={{ color: '#475569' }}>(Sem itens cadastrados)</div>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr style={{ color: '#9db0ca' }}>
+                    <tr style={{ color: '#475569' }}>
                       <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #e2e8f0' }}>Produto</th>
                       <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #e2e8f0' }}>Qtd</th>
                       <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #e2e8f0' }}>Etiqueta</th>
@@ -477,7 +478,7 @@ export default function ColetaDetalhePage() {
                       const volumesCount = it.volumes?.length ?? 0;
 
                       return (
-                        <tr key={it.id} style={{ color: '#e5e7eb' }}>
+                        <tr key={it.id} style={{ color: '#1e293b' }}>
                           <td style={{ padding: 8, borderBottom: '1px solid #e2e8f0' }}>
                             <div style={{ fontWeight: 900 }}>{prod?.descricao || prod?.code || it.id}</div>
                             <div style={{ fontSize: 12, opacity: 0.8 }}>{prod?.code || '—'}</div>
@@ -500,14 +501,14 @@ export default function ColetaDetalhePage() {
 
             {/* Paradas vinculadas */}
             <div style={{ marginTop: 18 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: '#e5e7eb' }}>Paradas vinculadas</h3>
+              <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: '#1e293b' }}>Paradas vinculadas</h3>
 
               {!coleta.paradas || coleta.paradas.length === 0 ? (
-                <div style={{ color: '#9db0ca' }}>(Sem paradas vinculadas)</div>
+                <div style={{ color: '#475569' }}>(Sem paradas vinculadas)</div>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr style={{ color: '#9db0ca' }}>
+                    <tr style={{ color: '#475569' }}>
                       <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #e2e8f0' }}>Ordem</th>
                       <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #e2e8f0' }}>Parada</th>
                       <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #e2e8f0' }}>Status</th>
@@ -517,7 +518,7 @@ export default function ColetaDetalhePage() {
                   </thead>
                   <tbody>
                     {coleta.paradas.map((p) => (
-                      <tr key={p.id} style={{ color: '#e5e7eb' }}>
+                      <tr key={p.id} style={{ color: '#1e293b' }}>
                         <td style={{ padding: 8, borderBottom: '1px solid #e2e8f0', fontWeight: 900 }}>{p.ordem}</td>
                         <td style={{ padding: 8, borderBottom: '1px solid #e2e8f0' }}>
                           <div style={{ fontWeight: 900 }}>{p.label}</div>
@@ -538,20 +539,20 @@ export default function ColetaDetalhePage() {
             {/* Representatividade na Carga */}
             {repData.length > 0 && (
               <div style={{ marginTop: 18 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: '#e5e7eb' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: '#1e293b' }}>
                   Representatividade na Carga
                 </h3>
                 {repData.map((rep) => {
                   const fmtBRL = Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
                   const fmtNum = Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
                   return (
-                    <div key={rep.planejamentoId} style={{ marginBottom: 16, padding: 12, background: '#141a22', borderRadius: 8, border: '1px solid #2a3442' }}>
+                    <div key={rep.planejamentoId} style={{ marginBottom: 16, padding: 12, background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                         <div>
-                          <span style={{ fontWeight: 700, color: '#e5e7eb' }}>{rep.planejamentoName}</span>
-                          <span style={{ fontSize: 12, color: '#9db0ca', marginLeft: 8 }}>({rep.totalColetas} NFs na carga)</span>
+                          <span style={{ fontWeight: 700, color: '#1e293b' }}>{rep.planejamentoName}</span>
+                          <span style={{ fontSize: 12, color: '#475569', marginLeft: 8 }}>({rep.totalColetas} NFs na carga)</span>
                         </div>
-                        <Link href={`/planejamento/${rep.planejamentoId}/carga`} style={{ color: '#93c5fd', fontSize: 12, textDecoration: 'underline' }}>
+                        <Link href={`/planejamento/${rep.planejamentoId}/carga`} style={{ color: '#1A4A1A', fontSize: 12, textDecoration: 'underline' }}>
                           Ver carga
                         </Link>
                       </div>
@@ -559,10 +560,10 @@ export default function ColetaDetalhePage() {
                       {/* Barras de % */}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                         <div>
-                          <div style={{ fontSize: 11, color: '#9db0ca', marginBottom: 4 }}>
+                          <div style={{ fontSize: 11, color: '#475569', marginBottom: 4 }}>
                             Peso: {fmtNum.format(rep.estaNF.pesoKg)} / {fmtNum.format(rep.totalPesoKg)} kg
                           </div>
-                          <div style={{ height: 18, borderRadius: 4, background: '#2a3442', overflow: 'hidden', position: 'relative' }}>
+                          <div style={{ height: 18, borderRadius: 4, background: '#e2e8f0', overflow: 'hidden', position: 'relative' }}>
                             <div style={{
                               height: '100%',
                               width: `${Math.min(rep.estaNF.pctPeso ?? 0, 100)}%`,
@@ -575,15 +576,15 @@ export default function ColetaDetalhePage() {
                               )}
                             </div>
                             {(rep.estaNF.pctPeso ?? 0) < 10 && rep.estaNF.pctPeso != null && (
-                              <span style={{ position: 'absolute', top: 1, left: 4, fontSize: 10, fontWeight: 700, color: '#9db0ca' }}>{fmtNum.format(rep.estaNF.pctPeso)}%</span>
+                              <span style={{ position: 'absolute', top: 1, left: 4, fontSize: 10, fontWeight: 700, color: '#475569' }}>{fmtNum.format(rep.estaNF.pctPeso)}%</span>
                             )}
                           </div>
                         </div>
                         <div>
-                          <div style={{ fontSize: 11, color: '#9db0ca', marginBottom: 4 }}>
+                          <div style={{ fontSize: 11, color: '#475569', marginBottom: 4 }}>
                             Frete: {fmtBRL.format(rep.estaNF.valorFrete)} / {fmtBRL.format(rep.totalValorFrete)}
                           </div>
-                          <div style={{ height: 18, borderRadius: 4, background: '#2a3442', overflow: 'hidden', position: 'relative' }}>
+                          <div style={{ height: 18, borderRadius: 4, background: '#e2e8f0', overflow: 'hidden', position: 'relative' }}>
                             <div style={{
                               height: '100%',
                               width: `${Math.min(rep.estaNF.pctFrete ?? 0, 100)}%`,
@@ -596,7 +597,7 @@ export default function ColetaDetalhePage() {
                               )}
                             </div>
                             {(rep.estaNF.pctFrete ?? 0) < 10 && rep.estaNF.pctFrete != null && (
-                              <span style={{ position: 'absolute', top: 1, left: 4, fontSize: 10, fontWeight: 700, color: '#9db0ca' }}>{fmtNum.format(rep.estaNF.pctFrete)}%</span>
+                              <span style={{ position: 'absolute', top: 1, left: 4, fontSize: 10, fontWeight: 700, color: '#475569' }}>{fmtNum.format(rep.estaNF.pctFrete)}%</span>
                             )}
                           </div>
                         </div>
@@ -604,8 +605,8 @@ export default function ColetaDetalhePage() {
 
                       {/* Veículo info */}
                       {rep.veiculo && (
-                        <div style={{ fontSize: 12, color: '#9db0ca', marginBottom: 10 }}>
-                          Veículo: <strong style={{ color: '#e5e7eb' }}>{rep.veiculo.placa}</strong>
+                        <div style={{ fontSize: 12, color: '#475569', marginBottom: 10 }}>
+                          Veículo: <strong style={{ color: '#1e293b' }}>{rep.veiculo.placa}</strong>
                           {rep.veiculo.capacidadeKg != null && (
                             <span> — Cap.: {Intl.NumberFormat('pt-BR').format(rep.veiculo.capacidadeKg)} kg</span>
                           )}
@@ -620,12 +621,12 @@ export default function ColetaDetalhePage() {
                       {/* Tabela de todas NFs na carga */}
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                         <thead>
-                          <tr style={{ color: '#9db0ca' }}>
-                            <th style={{ textAlign: 'left', padding: '4px 8px', borderBottom: '1px solid #2a3442' }}>NF</th>
-                            <th style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #2a3442' }}>Peso (kg)</th>
-                            <th style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #2a3442' }}>% Peso</th>
-                            <th style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #2a3442' }}>Frete</th>
-                            <th style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #2a3442' }}>% Frete</th>
+                          <tr style={{ color: '#475569' }}>
+                            <th style={{ textAlign: 'left', padding: '4px 8px', borderBottom: '1px solid #e2e8f0' }}>NF</th>
+                            <th style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #e2e8f0' }}>Peso (kg)</th>
+                            <th style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #e2e8f0' }}>% Peso</th>
+                            <th style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #e2e8f0' }}>Frete</th>
+                            <th style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #e2e8f0' }}>% Frete</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -633,7 +634,7 @@ export default function ColetaDetalhePage() {
                             <tr key={rc.id} style={{ color: rc.id === id ? '#F5BE16' : '#e5e7eb', fontWeight: rc.id === id ? 700 : 400 }}>
                               <td style={{ padding: '4px 8px', borderBottom: '1px solid #1e2a36' }}>
                                 {rc.id === id ? `▸ ${rc.nf}` : (
-                                  <Link href={`/coletas/${rc.id}`} style={{ color: '#93c5fd', textDecoration: 'none' }}>{rc.nf}</Link>
+                                  <Link href={`/coletas/${rc.id}`} style={{ color: '#1A4A1A', textDecoration: 'none' }}>{rc.nf}</Link>
                                 )}
                               </td>
                               <td style={{ textAlign: 'right', padding: '4px 8px', borderBottom: '1px solid #1e2a36' }}>
@@ -660,18 +661,18 @@ export default function ColetaDetalhePage() {
 
             {/* ✅ Auditoria / Eventos */}
             <div style={{ marginTop: 18 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: '#e5e7eb' }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, color: '#1e293b' }}>
                 Auditoria (Eventos)
               </h3>
 
-              {eventosErr && <div style={{ color: '#fca5a5', marginBottom: 8 }}>{eventosErr}</div>}
+              {eventosErr && <div style={{ color: '#dc2626', marginBottom: 8 }}>{eventosErr}</div>}
 
               {eventos.length === 0 ? (
-                <div style={{ color: '#9db0ca' }}>(Sem eventos registrados para esta coleta)</div>
+                <div style={{ color: '#475569' }}>(Sem eventos registrados para esta coleta)</div>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr style={{ color: '#9db0ca' }}>
+                    <tr style={{ color: '#475569' }}>
                       <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #e2e8f0' }}>Data</th>
                       <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #e2e8f0' }}>Status</th>
                       <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #e2e8f0' }}>Note</th>
@@ -680,7 +681,7 @@ export default function ColetaDetalhePage() {
                   </thead>
                   <tbody>
                     {eventos.map((ev) => (
-                      <tr key={ev.id} style={{ color: '#e5e7eb' }}>
+                      <tr key={ev.id} style={{ color: '#1e293b' }}>
                         <td style={{ padding: 8, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
                           {fmt(ev.createdAt)}
                         </td>
