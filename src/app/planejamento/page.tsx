@@ -496,7 +496,8 @@ export default function PlanejamentoPage() {
 
   // Atualiza o mapa sempre que mudarem as PARADAS ou o payload da rota
   useEffect(() => {
-    if (paradas.length > 0 && data && Array.isArray(data.points) && data.points.length > 0) {
+    if (data && Array.isArray(data.points) && data.points.length > 0) {
+      // Pontos: usa origem do data + paradas (se existirem) ou points do data
       const pts: Array<{ label: string; coord: [number, number] }> = [];
 
       const origem = data.points[0];
@@ -513,20 +514,32 @@ export default function PlanejamentoPage() {
         });
       }
 
-      const ordenadas = [...paradas].sort((a, b) => a.ordem - b.ordem);
-      for (const p of ordenadas) {
-        if (typeof p.lon === 'number' && typeof p.lat === 'number' && Number.isFinite(p.lon) && Number.isFinite(p.lat)) {
-          pts.push({
-            label: p.label,
-            coord: [p.lon, p.lat],
-          });
+      if (paradas.length > 0) {
+        const ordenadas = [...paradas].sort((a, b) => a.ordem - b.ordem);
+        for (const p of ordenadas) {
+          if (typeof p.lon === 'number' && typeof p.lat === 'number' && Number.isFinite(p.lon) && Number.isFinite(p.lat)) {
+            pts.push({ label: p.label, coord: [p.lon, p.lat] });
+          }
+        }
+      } else {
+        // Sem paradas, usa pontos do data (exceto o primeiro que já foi adicionado como origem)
+        for (let i = 1; i < data.points.length; i++) {
+          const p = data.points[i];
+          if (typeof p.lon === 'number' && typeof p.lat === 'number') {
+            pts.push({ label: p.label, coord: [p.lon, p.lat] });
+          }
         }
       }
 
       if (pts.length > 0) setMapPoints(pts);
       else setMapPoints([]);
 
-      if (pts.length >= 2) {
+      // Linhas: PRIORIZA GeoJSON real da rota, se disponível
+      const geoLines = (data.geojson?.features || []).map((f: any) => f?.geometry).filter(Boolean);
+      if (geoLines.length > 0) {
+        setMapLines(geoLines);
+      } else if (pts.length >= 2) {
+        // Fallback: linhas retas entre pontos
         const geom = {
           type: 'LineString',
           coordinates: pts.map((p) => [p.coord[0], p.coord[1]]),
@@ -535,20 +548,6 @@ export default function PlanejamentoPage() {
       } else {
         setMapLines([]);
       }
-
-      return;
-    }
-
-    if (data) {
-      const pts = (data.points || []).map((p) => ({
-        label: p.label,
-        coord: [p.lon, p.lat] as [number, number],
-      }));
-      setMapPoints(pts);
-
-      const lines = (data.geojson?.features || []).map((f: any) => f?.geometry).filter(Boolean);
-
-      setMapLines(lines);
     } else {
       setMapPoints([]);
       setMapLines([]);
@@ -1536,36 +1535,42 @@ export default function PlanejamentoPage() {
       const vincJ = await vincRes.json();
       if (!vincRes.ok) throw new Error(vincJ?.error || 'Falha ao vincular coletas');
 
-      // 3) Load paradas and calculate route
-      await loadParadas();
+      // 3) Load paradas silenciosamente (sem alterar mapa)
       setPatioSelected({});
+      const pRes = await fetch(`/api/planejamentos/${pid}/paradas`);
+      const pJ = await pRes.json();
+      const paradaArr = ((pJ.value || pJ.paradas || []) as ParadaRow[]).sort((a, b) => a.ordem - b.ordem);
+      setParadas(paradaArr);
+      setParadasInfo(`Carregado: ${paradaArr.length} parada(s).`);
+      const metricIds = Array.from(new Set(paradaArr.map((p) => p.coletaId).filter(Boolean)));
+      if (metricIds.length) void loadMetricas(metricIds);
 
-      // 4) Auto-calculate route from paradas
-      try {
-        const seen = new Set<string>();
-        const cities: string[] = [];
-        for (const c of rows) {
-          const cidade = String(c.cidade || '').trim();
-          const uf = String(c.uf || '').trim().toUpperCase();
-          if (!cidade || uf.length !== 2) continue;
-          const key = `${cidade.toUpperCase()}, ${uf}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          cities.push(`${cidade}, ${uf}, Brasil`);
-        }
+      // 4) Auto-calculate route from paradas cities
+      const seen = new Set<string>();
+      const cities: string[] = [];
+      for (const c of rows) {
+        const cidade = String(c.cidade || '').trim();
+        const uf = String(c.uf || '').trim().toUpperCase();
+        if (!cidade || uf.length !== 2) continue;
+        const key = `${cidade.toUpperCase()}, ${uf}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        cities.push(`${cidade}, ${uf}, Brasil`);
+      }
 
-        if (cities.length > 0) {
-          const orig = origin.trim() || 'São Carlos, SP, Brasil';
-          if (!origin.trim()) setOrigin(orig);
-          setDestinos(cities.join('\n'));
+      if (cities.length > 0) {
+        const orig = origin.trim() || 'São Carlos, SP, Brasil';
+        if (!origin.trim()) setOrigin(orig);
+        setDestinos(cities.join('\n'));
 
+        try {
           const routeRes = await fetch('/api/maps/route', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ places: [orig, ...cities] }),
           });
           const routeJ = await routeRes.json();
-          if (routeRes.ok) {
+          if (routeRes.ok && routeJ.points) {
             const resp: ApiResp = {
               points: (routeJ.points || []) as ApiPoint[],
               legs: (routeJ.legs || []) as ApiLeg[],
@@ -1579,16 +1584,22 @@ export default function PlanejamentoPage() {
               label: p.label,
               coord: [p.lon, p.lat] as [number, number],
             }));
-            const lines = (resp.geojson?.features || []).map((f: any) => f?.geometry).filter(Boolean);
+            const geoLines = (resp.geojson?.features || []).map((f: any) => f?.geometry).filter(Boolean);
             setMapPoints(pts);
-            setMapLines(lines);
+            setMapLines(geoLines);
 
             // Persist route data to DB (payload + kmTrecho per parada)
             await persistRouteData(resp, pid);
+          } else {
+            // Fallback: show straight lines if route calc fails
+            refreshMapFromParadas(paradaArr);
           }
+        } catch (routeErr: any) {
+          console.warn('Route calc failed after vincular:', routeErr?.message);
+          refreshMapFromParadas(paradaArr);
         }
-      } catch {
-        // route calc is non-critical
+      } else {
+        refreshMapFromParadas(paradaArr);
       }
 
       setParadasInfo(`${rows.length} coleta(s) vinculadas como paradas com sucesso!`);
