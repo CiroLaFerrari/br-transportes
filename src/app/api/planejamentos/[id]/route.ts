@@ -47,6 +47,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (typeof body?.notes === 'string' || body?.notes === null) data.notes = body.notes;
     if (typeof body?.veiculoId === 'string' || body?.veiculoId === null) data.veiculoId = body.veiculoId;
     if (typeof body?.motoristaId === 'string' || body?.motoristaId === null) data.motoristaId = body.motoristaId;
+    if (body?.payload !== undefined && typeof body.payload === 'object') data.payload = body.payload;
 
     const updated = await prisma.planejamento.update({
       where: { id },

@@ -755,6 +755,42 @@ export default function PlanejamentoPage() {
     }
   }
 
+  /** Salva payload da rota no banco e atualiza kmTrecho/durMinTrecho nas paradas */
+  async function persistRouteData(resp: ApiResp, pid?: string | null) {
+    const id = pid || planId;
+    if (!id) return;
+    try {
+      // 1) Salva payload no planejamento
+      await fetch(`/api/planejamentos/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payload: resp }),
+      });
+
+      // 2) Atualiza kmTrecho/durMinTrecho nas paradas com base nos legs
+      if (resp.legs && resp.legs.length > 0) {
+        const paradasAtual = paradas.length > 0 ? paradas : await fetch(`/api/planejamentos/${id}/paradas`).then(r => r.json()).then(j => (j.value || j.paradas || []) as ParadaRow[]);
+        const sorted = [...paradasAtual].sort((a, b) => a.ordem - b.ordem);
+        for (let i = 0; i < sorted.length && i < resp.legs.length; i++) {
+          const leg = resp.legs[i];
+          const km = typeof leg.km === 'number' ? leg.km : (typeof leg.distance === 'number' ? (leg.distance > 1000 ? leg.distance / 1000 : leg.distance) : null);
+          const durMin = typeof leg.dur_min === 'number' ? leg.dur_min : (typeof leg.duration === 'number' ? Math.round(leg.duration / 60) : null);
+          if (km != null || durMin != null) {
+            await fetch(`/api/planejamentos/${id}/paradas/${encodeURIComponent(sorted[i].id)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ kmTrecho: km, durMinTrecho: durMin }),
+            });
+          }
+        }
+        // Recarrega paradas para refletir os novos km/min
+        await loadParadas();
+      }
+    } catch (err) {
+      console.warn('persistRouteData non-fatal error:', err);
+    }
+  }
+
   async function calcular() {
     setLoading(true);
     setError(null);
@@ -805,6 +841,9 @@ export default function PlanejamentoPage() {
       setMapLines(lines);
 
       if (!planName.trim()) setPlanName(defaultPlanName(orig, dests.join('\n')));
+
+      // Persist route data to DB (payload + kmTrecho per parada)
+      void persistRouteData(resp);
     } catch (e: any) {
       setError(e?.message || 'Erro inesperado');
     } finally {
@@ -872,6 +911,9 @@ export default function PlanejamentoPage() {
       setMapLines(lines);
 
       if (!planName.trim()) setPlanName(defaultPlanName(orig, orderedStops.join('\n')));
+
+      // Persist route data to DB
+      void persistRouteData(resp);
     } catch (e: any) {
       setError(e?.message || 'Erro inesperado');
     } finally {
@@ -1521,6 +1563,9 @@ export default function PlanejamentoPage() {
             const lines = (resp.geojson?.features || []).map((f: any) => f?.geometry).filter(Boolean);
             setMapPoints(pts);
             setMapLines(lines);
+
+            // Persist route data to DB (payload + kmTrecho per parada)
+            await persistRouteData(resp, pid);
           }
         }
       } catch {

@@ -58,6 +58,13 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
     const data: any = {};
 
+    // label / lon / lat / kmTrecho / durMinTrecho (se enviados)
+    if (typeof body?.label === 'string' && body.label.trim()) data.label = body.label.trim();
+    if (typeof body?.lon === 'number' && Number.isFinite(body.lon)) data.lon = body.lon;
+    if (typeof body?.lat === 'number' && Number.isFinite(body.lat)) data.lat = body.lat;
+    if (typeof body?.kmTrecho === 'number' && Number.isFinite(body.kmTrecho)) data.kmTrecho = body.kmTrecho;
+    if (typeof body?.durMinTrecho === 'number' && Number.isFinite(body.durMinTrecho)) data.durMinTrecho = body.durMinTrecho;
+
     // status (se enviado)
     if (status !== undefined) {
       const allowed = ['PENDING', 'IN_PROGRESS', 'DONE'] as const;
