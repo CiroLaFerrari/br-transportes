@@ -61,24 +61,72 @@ const fmt = Intl.NumberFormat('pt-BR');
 const fmtDec = Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
 const fmtBRL = Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
-function downloadCSV(filename: string, headers: string[], rows: string[][]) {
-  const BOM = '\uFEFF';
-  const escape = (v: string) => {
-    if (v.includes('"') || v.includes(',') || v.includes('\n') || v.includes(';')) {
-      return `"${v.replace(/"/g, '""')}"`;
+function downloadExcel(filename: string, headers: string[], rows: string[][]) {
+  // Build simple XLSX (Office Open XML) using a single-sheet workbook
+  const escXml = (v: string) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  let sheetRows = '<row r="1">' + headers.map((h, i) => {
+    const col = String.fromCharCode(65 + (i % 26));
+    return `<c r="${col}1" t="inlineStr"><is><t>${escXml(h)}</t></is></c>`;
+  }).join('') + '</row>';
+
+  for (let r = 0; r < rows.length; r++) {
+    const rowNum = r + 2;
+    let cells = '';
+    for (let c = 0; c < rows[r].length; c++) {
+      const col = String.fromCharCode(65 + (c % 26));
+      const val = rows[r][c];
+      // Try numeric
+      const num = val.replace(',', '.').replace(/\s/g, '');
+      if (val && !isNaN(Number(num)) && num !== '') {
+        cells += `<c r="${col}${rowNum}"><v>${num}</v></c>`;
+      } else {
+        cells += `<c r="${col}${rowNum}" t="inlineStr"><is><t>${escXml(val)}</t></is></c>`;
+      }
     }
-    return v;
-  };
-  const csvContent =
-    BOM +
-    headers.map(escape).join(';') +
-    '\n' +
-    rows.map((row) => row.map(escape).join(';')).join('\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    sheetRows += `<row r="${rowNum}">${cells}</row>`;
+  }
+
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`;
+
+  const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Relatório" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+
+  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`;
+
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`;
+
+  const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
+
+  // Use JSZip-like manual ZIP via Blob — simpler: use the fflate or just do CSV with xlsx extension
+  // Actually, let's use a proper approach with the ZIP format
+  // For maximum compatibility without deps, we'll use a semicolon-separated CSV saved as .xlsx
+  // Better approach: build the ZIP manually using compression API or just install xlsx
+
+  // Simplest reliable approach: HTML table → Excel recognizes it
+  let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Relatório</x:Name></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body><table>';
+  html += '<tr>' + headers.map(h => `<th style="font-weight:bold;background:#f0f0f0;border:1px solid #ccc">${escXml(h)}</th>`).join('') + '</tr>';
+  for (const row of rows) {
+    html += '<tr>' + row.map(v => {
+      const num = v.replace(',', '.').replace(/\s/g, '');
+      if (v && !isNaN(Number(num)) && num !== '') {
+        return `<td style="border:1px solid #eee" x:num="${num}">${escXml(v)}</td>`;
+      }
+      return `<td style="border:1px solid #eee">${escXml(v)}</td>`;
+    }).join('') + '</tr>';
+  }
+  html += '</table></body></html>';
+
+  const xlsName = filename.replace(/\.csv$/i, '.xls');
+  const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename;
+  a.download = xlsName;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -171,12 +219,6 @@ function RotasTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const csvHref = (() => {
-    const p = new URLSearchParams({ dateFrom, dateTo, format: 'csv' });
-    if (costPerKm.trim()) p.set('costPerKm', costPerKm.trim());
-    return `/api/relatorios/rotas?${p.toString()}`;
-  })();
-
   const xlsxHref = (() => {
     const p = new URLSearchParams({ dateFrom, dateTo });
     if (costPerKm.trim()) p.set('costPerKm', costPerKm.trim());
@@ -201,7 +243,6 @@ function RotasTab() {
         <button onClick={carregar} disabled={loading} style={btnPrimary}>
           {loading ? 'Carregando...' : 'Filtrar'}
         </button>
-        <a href={csvHref} style={btnOutline}>Exportar CSV</a>
         <a href={xlsxHref} style={btnOutline}>Exportar Excel</a>
       </div>
 
@@ -347,10 +388,10 @@ function PatioTab() {
                 fmtDateBR(c.fimPatioAt),
                 c.leadTimeDias != null ? String(c.leadTimeDias) : '',
               ]);
-              downloadCSV(`relatorio_detalhado_${dateFrom}_${dateTo}.csv`, headers, rows);
+              downloadExcel(`relatorio_detalhado_${dateFrom}_${dateTo}.xls`, headers, rows);
             }}
           >
-            Exportar Detalhado CSV
+            Exportar Detalhado Excel
           </button>
         )}
       </div>
@@ -576,7 +617,7 @@ function PatioUf({ data }: { data: PatioReport['analiseUf'] }) {
 }
 
 function PatioClientes({ data, coletas, dateFrom, dateTo }: { data: PatioReport['analiseCliente']; coletas: PatioColeta[]; dateFrom: string; dateTo: string }) {
-  function exportClientCSV(clienteName: string) {
+  function exportClientExcel(clienteName: string) {
     const clienteColetas = coletas.filter((c) => c.cliente === clienteName);
     const headers = ['NF', 'Cidade', 'UF', 'Status', 'Peso (kg)', 'Valor Frete', 'Data Entrada Pátio', 'Data Saída Pátio', 'Lead Time (dias)'];
     const rows = clienteColetas.map((c) => [
@@ -591,7 +632,7 @@ function PatioClientes({ data, coletas, dateFrom, dateTo }: { data: PatioReport[
       c.leadTimeDias != null ? String(c.leadTimeDias) : '',
     ]);
     const safeName = clienteName.replace(/[^a-zA-Z0-9_-]/g, '_');
-    downloadCSV(`relatorio_${safeName}_${dateFrom}_${dateTo}.csv`, headers, rows);
+    downloadExcel(`relatorio_${safeName}_${dateFrom}_${dateTo}.xls`, headers, rows);
   }
 
   return (
@@ -620,8 +661,8 @@ function PatioClientes({ data, coletas, dateFrom, dateTo }: { data: PatioReport[
               <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtDec.format(r.maxDias)}</td>
               <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{fmtBRL.format(r.valorFrete)}</td>
               <td style={{ ...tdStyle, textAlign: 'center' }}>
-                <button onClick={() => exportClientCSV(r.cliente)} style={{ ...btnOutline, padding: '4px 10px', fontSize: 11 }}>
-                  Exportar CSV
+                <button onClick={() => exportClientExcel(r.cliente)} style={{ ...btnOutline, padding: '4px 10px', fontSize: 11 }}>
+                  Exportar Excel
                 </button>
               </td>
             </tr>
