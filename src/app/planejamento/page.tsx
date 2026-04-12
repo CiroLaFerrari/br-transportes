@@ -1395,6 +1395,108 @@ export default function PlanejamentoPage() {
     setParadasInfo(`Adicionadas ${patioSelectedRows.length} coleta(s) do pátio ao campo de IDs.`);
   }
 
+  /** Vincular selecionadas do pátio diretamente como paradas (auto-cria planejamento se necessário) */
+  async function vincularSelecionadasDireto() {
+    try {
+      if (patioSelectedRows.length === 0) {
+        setError('Selecione ao menos uma coleta no pátio.');
+        return;
+      }
+
+      setParadasLoading(true);
+      setParadasError(null);
+      setError(null);
+
+      // 1) Gera destinos e calcula rota automaticamente
+      const rows = patioSelectedRows;
+      const seen = new Set<string>();
+      const cities: string[] = [];
+      for (const c of rows) {
+        const cidade = String(c.cidade || '').trim();
+        const uf = String(c.uf || '').trim().toUpperCase();
+        if (!cidade || uf.length !== 2) continue;
+        const key = `${cidade.toUpperCase()}, ${uf}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        cities.push(`${cidade}, ${uf}, Brasil`);
+      }
+
+      if (cities.length === 0) {
+        throw new Error('Nenhuma cidade válida encontrada nas coletas selecionadas.');
+      }
+
+      const orig = origin.trim() || 'São Carlos, SP, Brasil';
+      setOrigin(orig);
+      setDestinos(cities.join('\n'));
+
+      // 2) Calcular rota
+      const places = [orig, ...cities];
+      const routeRes = await fetch('/api/maps/route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ places }),
+      });
+      const routeJ = await routeRes.json();
+      if (!routeRes.ok) throw new Error(routeJ?.error || 'Falha ao calcular rota');
+
+      const resp: ApiResp = {
+        points: (routeJ.points || []) as ApiPoint[],
+        legs: (routeJ.legs || []) as ApiLeg[],
+        total_km: Number(routeJ.total_km),
+        total_dur_min: Number(routeJ.total_dur_min),
+        geojson: routeJ.geojson,
+      };
+      setData(resp);
+
+      const pts = (resp.points || []).map((p) => ({
+        label: p.label,
+        coord: [p.lon, p.lat] as [number, number],
+      }));
+      const lines = (resp.geojson?.features || []).map((f: any) => f?.geometry).filter(Boolean);
+      setMapPoints(pts);
+      setMapLines(lines);
+
+      if (!planName.trim()) setPlanName(defaultPlanName(orig, cities.join('\n')));
+
+      // 3) Garantir planejamento
+      let pid = planId;
+      if (!pid) {
+        const name = (planName || defaultPlanName(orig, cities.join('\n'))).trim();
+        const planRes = await fetch('/api/planejamentos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, payload: resp }),
+        });
+        const planJ = await planRes.json();
+        if (!planRes.ok) throw new Error(planJ?.error || 'Falha ao criar planejamento');
+        pid = planJ.id as string;
+        setPlanId(pid);
+        setPlanName(name);
+        await loadPlans();
+      }
+
+      // 4) Vincular coletas
+      const coletaIds = rows.map((c) => c.id);
+      setColetaIdsText(coletaIds.join(' '));
+      const vincRes = await fetch(`/api/planejamentos/${pid}/vincular-coletas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coletaIds }),
+      });
+      const vincJ = await vincRes.json();
+      if (!vincRes.ok) throw new Error(vincJ?.error || 'Falha ao vincular coletas');
+
+      setParadasInfo(`${rows.length} coleta(s) vinculadas com sucesso! Rota calculada com ${cities.length} destino(s).`);
+      await loadParadas();
+      setPatioSelected({});
+    } catch (e: any) {
+      setError(e?.message || 'Falha ao vincular selecionadas');
+      setParadasError(e?.message || 'Falha ao vincular selecionadas');
+    } finally {
+      setParadasLoading(false);
+    }
+  }
+
   /** Gera destinos automaticamente a partir das coletas selecionadas no pátio */
   function gerarDestinosAuto() {
     const rows = patioSelectedRows.length > 0 ? patioSelectedRows : patioList;
@@ -1776,21 +1878,21 @@ export default function PlanejamentoPage() {
           </button>
 
           <button
-            onClick={() => patioAddSelectedToIds()}
-            disabled={patioSelectedRows.length === 0}
-            style={{ ...btn, background: patioSelectedRows.length ? '#22c55e' : '#94a3b8', color: '#1e293b', opacity: patioSelectedRows.length ? 1 : 0.7 }}
-            title="Adiciona as coletas selecionadas ao campo de IDs abaixo"
+            onClick={vincularSelecionadasDireto}
+            disabled={patioSelectedRows.length === 0 || paradasLoading}
+            style={{ ...btn, background: patioSelectedRows.length ? '#1A4A1A' : '#94a3b8', color: '#F5BE16', fontWeight: 700, padding: '8px 16px', opacity: patioSelectedRows.length && !paradasLoading ? 1 : 0.7 }}
+            title="Calcula rota, cria planejamento e vincula as coletas selecionadas como paradas automaticamente"
           >
-            Adicionar selecionadas (→ IDs)
+            {paradasLoading ? 'Vinculando…' : 'Vincular selecionadas como paradas'}
           </button>
 
           <button
-            onClick={gerarDestinosAuto}
-            disabled={patioList.length === 0}
-            style={{ ...btn, background: patioList.length ? '#7c3aed' : '#94a3b8', color: 'white', opacity: patioList.length ? 1 : 0.7 }}
-            title="Preenche automaticamente os destinos da rota a partir das cidades das coletas selecionadas (ou todas se nenhuma selecionada)"
+            onClick={() => patioAddSelectedToIds()}
+            disabled={patioSelectedRows.length === 0}
+            style={{ ...btn, background: patioSelectedRows.length ? '#64748b' : '#94a3b8', color: 'white', opacity: patioSelectedRows.length ? 1 : 0.7, fontSize: 12 }}
+            title="Apenas adiciona IDs ao campo abaixo (vincular manual)"
           >
-            Gerar rota automática
+            Só adicionar IDs
           </button>
 
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -2537,33 +2639,6 @@ export default function PlanejamentoPage() {
             </table>
           </div>
 
-          <div style={{ marginTop: 16, borderTop: '1px dashed #e2e8f0', paddingTop: 12 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Editar parada (PATCH)</h3>
-            <div style={{ display: 'grid', gap: 8, gridTemplateColumns: '1fr 1fr 1fr 1fr', maxWidth: 1000 }}>
-              <label style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={labelStyle}>paradaId</span>
-                <input value={editParadaId} onChange={(e) => setEditParadaId(e.target.value)} style={inputStyle} placeholder="Cole o ID da tabela acima" />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={labelStyle}>Novo label</span>
-                <input value={editLabel} onChange={(e) => setEditLabel(e.target.value)} style={inputStyle} placeholder='Ex.: "São Paulo, SP, Brasil"' />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={labelStyle}>lon</span>
-                <input value={editLon} onChange={(e) => setEditLon(e.target.value)} style={inputStyle} placeholder="-46.633309" />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={labelStyle}>lat</span>
-                <input value={editLat} onChange={(e) => setEditLat(e.target.value)} style={inputStyle} placeholder="-23.550520" />
-              </label>
-            </div>
-            <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
-              <button onClick={patchParada} disabled={editLoading} style={{ ...btn, background: '#f59e0b', color: '#1e293b', opacity: editLoading ? 0.7 : 1 }}>
-                {editLoading ? 'Salvando…' : 'Salvar alterações'}
-              </button>
-              {editMsg && <div style={{ alignSelf: 'center', color: '#16a34a' }}>{editMsg}</div>}
-            </div>
-          </div>
         </div>
       )}
 
