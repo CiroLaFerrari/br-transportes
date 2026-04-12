@@ -138,6 +138,7 @@ export async function POST(req: NextRequest) {
         sources: idxAll,
         destinations: idxAll,
         metrics: ['distance', 'duration'],
+        radiuses: Array(N).fill(5000), // snap para estrada num raio de 5km
       }),
       next: { revalidate: 0 }
     });

@@ -75,7 +75,7 @@ async function geocodeSmart(q: string, key: string, focus?: Coord, circleKm = 30
 }
 
 // Directions ORS: auto-detecta unidade (km vs metros) de forma robusta
-async function directionsORS(a: Coord, b: Coord, key: string) {
+async function directionsORS(a: Coord, b: Coord, key: string, labelA?: string, labelB?: string) {
   const url = 'https://api.openrouteservice.org/v2/directions/driving-car/geojson';
   const resp = await fetch(url, {
     method: 'POST',
@@ -83,14 +83,25 @@ async function directionsORS(a: Coord, b: Coord, key: string) {
     body: JSON.stringify({
       coordinates: [a, b],
       instructions: false,
-      units: 'km', // independente disso, faremos detecção automática abaixo
+      units: 'km',
       language: 'pt',
+      radiuses: [5000, 5000], // snap para estrada num raio de 5km (padrão ORS: 350m)
     }),
     next: { revalidate: 0 }
   });
   if (!resp.ok) {
     const t = await resp.text();
-    throw new Error(`ORS directions fail: ${t}`);
+    const trecho = labelA && labelB ? ` (trecho: ${labelA} → ${labelB})` : '';
+    // Parse ORS error for user-friendly message
+    try {
+      const errObj = JSON.parse(t);
+      if (errObj?.error?.code === 2010) {
+        throw new Error(`Não foi possível encontrar uma estrada próxima ao ponto geocodificado${trecho}. Tente especificar o endereço de forma mais precisa.`);
+      }
+    } catch (parseErr: any) {
+      if (parseErr?.message?.includes('estrada')) throw parseErr;
+    }
+    throw new Error(`Falha ao calcular rota${trecho}: ${t}`);
   }
   const geo = await resp.json();
   const feat = geo?.features?.[0];
@@ -152,7 +163,7 @@ export async function POST(req: NextRequest) {
 
     for (let i = 0; i < coords.length - 1; i++) {
       const a = coords[i], b = coords[i+1];
-      const leg = await directionsORS(a, b, key);
+      const leg = await directionsORS(a, b, key, norms[i], norms[i+1]);
 
       features.push({
         type: 'Feature',
