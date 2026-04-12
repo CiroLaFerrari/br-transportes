@@ -200,8 +200,10 @@ export async function POST(req: NextRequest) {
         console.error('Google Routes API failed, falling back to heuristic:', err.message);
         result = estimateHeuristic(points, totalKm);
         result.method = 'heuristic_fallback';
+        result.fallbackReason = err.message;
       }
     } else {
+      console.warn('GOOGLE_MAPS_API_KEY not set – using toll heuristic. Checked: GOOGLE_MAPS_API_KEY and NEXT_PUBLIC_GOOGLE_MAPS_API_KEY');
       result = estimateHeuristic(points, totalKm);
     }
 

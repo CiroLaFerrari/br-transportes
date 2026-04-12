@@ -1021,7 +1021,12 @@ export default function PlanejamentoPage() {
       } else {
         setTollsText('0');
       }
-      setTollEstMethod(j.method || '');
+      const methodLabel = j.method || '';
+      if (j.fallbackReason) {
+        setTollEstMethod(methodLabel + '||' + j.fallbackReason);
+      } else {
+        setTollEstMethod(methodLabel);
+      }
     } catch (e: any) {
       setError(e?.message || 'Falha ao estimar pedágios');
     } finally {
@@ -1183,44 +1188,27 @@ export default function PlanejamentoPage() {
 
       const arr = ((j.value || j.paradas || []) as ParadaRow[]).sort((a, b) => a.ordem - b.ordem);
       setParadas(arr);
-      setParadasInfo('Paradas otimizadas (ordem sugerida pelo sistema).');
+      setParadasInfo(j.message || 'Paradas otimizadas.');
 
-      // Recalculate actual road route for the map (not just straight lines)
-      if (arr.length > 0) {
-        const orig = origin.trim() || 'São Carlos, SP, Brasil';
-        const dests = arr.map((p) => {
-          const label = p.label || '';
-          return label.includes('/') ? label.replace(/\s*\/\s*/, ', ').trim() + ', Brasil' : label + ', Brasil';
-        });
-        try {
-          const routeRes = await fetch('/api/maps/route', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ places: [orig, ...dests] }),
-          });
-          const routeJ = await routeRes.json();
-          if (routeRes.ok && routeJ.points) {
-            const resp: ApiResp = {
-              points: (routeJ.points || []) as ApiPoint[],
-              legs: (routeJ.legs || []) as ApiLeg[],
-              total_km: Number(routeJ.total_km),
-              total_dur_min: Number(routeJ.total_dur_min),
-              geojson: routeJ.geojson,
-            };
-            setData(resp);
-            const pts = (resp.points || []).map((p) => ({
-              label: p.label,
-              coord: [p.lon, p.lat] as [number, number],
-            }));
-            const geoLines = (resp.geojson?.features || []).map((f: any) => f?.geometry).filter(Boolean);
-            setMapPoints(pts);
-            setMapLines(geoLines);
-          } else {
-            refreshMapFromParadas(arr);
-          }
-        } catch {
-          refreshMapFromParadas(arr);
-        }
+      // Use route data returned by the API (already calculated with ORS)
+      if (j.route && j.route.geojson) {
+        const resp: ApiResp = {
+          points: (j.route.points || []) as ApiPoint[],
+          legs: (j.route.legs || []) as ApiLeg[],
+          total_km: Number(j.route.total_km),
+          total_dur_min: Number(j.route.total_dur_min),
+          geojson: j.route.geojson,
+        };
+        setData(resp);
+        const pts = (resp.points || []).map((p) => ({
+          label: p.label,
+          coord: [p.lon, p.lat] as [number, number],
+        }));
+        const geoLines = (resp.geojson?.features || []).map((f: any) => f?.geometry).filter(Boolean);
+        setMapPoints(pts);
+        setMapLines(geoLines);
+      } else if (arr.length > 0) {
+        refreshMapFromParadas(arr);
       }
 
       const ids = Array.from(new Set(arr.map((p) => p.coletaId).filter(Boolean)));
@@ -2284,6 +2272,129 @@ export default function PlanejamentoPage() {
         </div>
       </div>
 
+      {/* CUSTO */}
+      {data && (
+        <div style={sectionCard}>
+          <h2 style={{ fontSize: 18, fontWeight: 900, marginBottom: 8, color: '#1A4A1A' }}>Cálculo de Custo</h2>
+
+          <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', maxWidth: 1000 }}>
+            <label style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={labelStyle}>Diesel (R$/L)</span>
+              <input value={dieselPrice} onChange={(e) => setDieselPrice(e.target.value)} style={inputStyle} placeholder="6.10" />
+            </label>
+
+            <label style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={labelStyle}>Consumo (km/L)</span>
+              <input value={consumption} onChange={(e) => setConsumption(e.target.value)} style={inputStyle} placeholder="6.5" />
+            </label>
+
+            <label style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={labelStyle}>Motorista (R$/h)</span>
+              <input value={driverHourly} onChange={(e) => setDriverHourly(e.target.value)} style={inputStyle} placeholder="18" />
+            </label>
+
+            <div />
+
+            <label style={{ display: 'flex', flexDirection: 'column', gridColumn: '1 / 3' }}>
+              <span style={labelStyle}>Pedágios (separe por vírgula, ponto e vírgula ou nova linha)</span>
+              <textarea value={tollsText} onChange={(e) => setTollsText(e.target.value)} rows={2} style={{ ...inputStyle, minHeight: 60 }} placeholder={'12,40; 8,70; 17'} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                <button
+                  onClick={estimarPedagios}
+                  disabled={tollEstLoading || !data}
+                  style={{
+                    ...btn,
+                    background: data ? '#F5BE16' : '#e5e7eb',
+                    color: '#1A4A1A',
+                    padding: '5px 12px',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    opacity: tollEstLoading ? 0.7 : 1,
+                    cursor: data ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  {tollEstLoading ? 'Estimando...' : 'Estimar Pedágios'}
+                </button>
+                {tollEstMethod && (() => {
+                  const [method, reason] = tollEstMethod.split('||');
+                  return (
+                    <span style={{ fontSize: 11, color: method === 'google_routes_api' ? '#16a34a' : '#b45309' }}>
+                      {method === 'google_routes_api'
+                        ? 'Via Google Maps Routes API'
+                        : method.startsWith('heuristic')
+                          ? `Estimativa heurística${reason ? ` (${reason})` : ''}`
+                          : 'Estimativa baseada na distância'}
+                    </span>
+                  );
+                })()}
+              </div>
+            </label>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gridColumn: '3 / -1' }}>
+              <span style={labelStyle}>Extras por linha (formato: Nome:valor)</span>
+              <textarea value={extrasText} onChange={(e) => setExtrasText(e.target.value)} rows={2} style={{ ...inputStyle, minHeight: 60 }} placeholder={'Ajudante:50\nCarregamento:35'} />
+            </label>
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <button onClick={calcularCusto} disabled={costLoading} style={{ ...btn, background: '#22c55e', color: '#1e293b', padding: '8px 14px', opacity: costLoading ? 0.7 : 1 }}>
+              {costLoading ? 'Calculando…' : 'Calcular custo'}
+            </button>
+          </div>
+
+          {costResult && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ marginBottom: 6 }}>
+                <strong>Resumo:</strong> {costResult.breakdown.distance_km} km • {costResult.breakdown.duration_min} min
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8, background: '#fff' }}>
+                <thead>
+                  <tr>
+                    <th style={th}>Item</th>
+                    <th style={th}>Valor (R$)</th>
+                    <th style={th}>Obs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style={td}>Combustível</td>
+                    <td style={tdNum}>{Number(costResult.breakdown.fuel_cost).toFixed(2)}</td>
+                    <td style={td}>
+                      Litros: {costResult.breakdown.fuel_liters.toFixed(2)} @ R$ {Number(costResult.inputs.diesel_price).toFixed(2)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={td}>Motorista</td>
+                    <td style={tdNum}>{Number(costResult.breakdown.driver_cost).toFixed(2)}</td>
+                    <td style={td}>
+                      Horas: {Number(costResult.breakdown.driver_hours).toFixed(2)} @ R$ {costResult.inputs.driver_hourly ?? 0}/h
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={td}>Pedágios</td>
+                    <td style={tdNum}>{Number(costResult.breakdown.tolls_total).toFixed(2)}</td>
+                    <td style={td}>{(costResult.inputs.tolls || []).join(', ')}</td>
+                  </tr>
+                  <tr>
+                    <td style={td}>Extras</td>
+                    <td style={tdNum}>{Number(costResult.breakdown.extras_total).toFixed(2)}</td>
+                    <td style={td}>{(costResult.inputs.extras || []).map((e: any) => `${e.label}: ${Number(e.value).toFixed(2)}`).join(' | ')}</td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td style={{ ...td, fontWeight: 700 }}>TOTAL</td>
+                    <td style={{ ...tdNum, fontWeight: 700 }}>{Number(costResult.breakdown.total).toFixed(2)}</td>
+                    <td style={td}>BRL</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+
       {/* METADADOS + VIABILIDADE + CAPACIDADE */}
       {(data || planId) && (
         <div style={sectionCard}>
@@ -2558,125 +2669,6 @@ export default function PlanejamentoPage() {
           <div style={{ marginTop: 10, fontWeight: 600 }}>
             Total: {Number(data.total_km).toFixed(2)} km • {Number(data.total_dur_min)} min
           </div>
-        </div>
-      )}
-
-      {/* CUSTO */}
-      {data && (
-        <div style={sectionCard}>
-          <h2 style={{ fontSize: 18, fontWeight: 900, marginBottom: 8, color: '#1A4A1A' }}>Cálculo de Custo</h2>
-
-          <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', maxWidth: 1000 }}>
-            <label style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={labelStyle}>Diesel (R$/L)</span>
-              <input value={dieselPrice} onChange={(e) => setDieselPrice(e.target.value)} style={inputStyle} placeholder="6.10" />
-            </label>
-
-            <label style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={labelStyle}>Consumo (km/L)</span>
-              <input value={consumption} onChange={(e) => setConsumption(e.target.value)} style={inputStyle} placeholder="6.5" />
-            </label>
-
-            <label style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={labelStyle}>Motorista (R$/h)</span>
-              <input value={driverHourly} onChange={(e) => setDriverHourly(e.target.value)} style={inputStyle} placeholder="18" />
-            </label>
-
-            <div />
-
-            <label style={{ display: 'flex', flexDirection: 'column', gridColumn: '1 / 3' }}>
-              <span style={labelStyle}>Pedágios (separe por vírgula, ponto e vírgula ou nova linha)</span>
-              <textarea value={tollsText} onChange={(e) => setTollsText(e.target.value)} rows={2} style={{ ...inputStyle, minHeight: 60 }} placeholder={'12,40; 8,70; 17'} />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                <button
-                  onClick={estimarPedagios}
-                  disabled={tollEstLoading || !data}
-                  style={{
-                    ...btn,
-                    background: data ? '#F5BE16' : '#e5e7eb',
-                    color: '#1A4A1A',
-                    padding: '5px 12px',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    opacity: tollEstLoading ? 0.7 : 1,
-                    cursor: data ? 'pointer' : 'not-allowed',
-                  }}
-                >
-                  {tollEstLoading ? 'Estimando...' : 'Estimar Pedágios'}
-                </button>
-                {tollEstMethod && (
-                  <span style={{ fontSize: 11, color: '#64748b' }}>
-                    {tollEstMethod === 'google_routes_api'
-                      ? 'Via Google Maps'
-                      : tollEstMethod === 'heuristic_fallback'
-                        ? 'Estimativa (Google indisponível)'
-                        : 'Estimativa baseada na distância'}
-                  </span>
-                )}
-              </div>
-            </label>
-
-            <label style={{ display: 'flex', flexDirection: 'column', gridColumn: '3 / -1' }}>
-              <span style={labelStyle}>Extras por linha (formato: Nome:valor)</span>
-              <textarea value={extrasText} onChange={(e) => setExtrasText(e.target.value)} rows={2} style={{ ...inputStyle, minHeight: 60 }} placeholder={'Ajudante:50\nCarregamento:35'} />
-            </label>
-          </div>
-
-          <div style={{ marginTop: 10 }}>
-            <button onClick={calcularCusto} disabled={costLoading} style={{ ...btn, background: '#22c55e', color: '#1e293b', padding: '8px 14px', opacity: costLoading ? 0.7 : 1 }}>
-              {costLoading ? 'Calculando…' : 'Calcular custo'}
-            </button>
-          </div>
-
-          {costResult && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ marginBottom: 6 }}>
-                <strong>Resumo:</strong> {costResult.breakdown.distance_km} km • {costResult.breakdown.duration_min} min
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8, background: '#fff' }}>
-                <thead>
-                  <tr>
-                    <th style={th}>Item</th>
-                    <th style={th}>Valor (R$)</th>
-                    <th style={th}>Obs</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td style={td}>Combustível</td>
-                    <td style={tdNum}>{Number(costResult.breakdown.fuel_cost).toFixed(2)}</td>
-                    <td style={td}>
-                      Litros: {costResult.breakdown.fuel_liters.toFixed(2)} @ R$ {Number(costResult.inputs.diesel_price).toFixed(2)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style={td}>Motorista</td>
-                    <td style={tdNum}>{Number(costResult.breakdown.driver_cost).toFixed(2)}</td>
-                    <td style={td}>
-                      Horas: {Number(costResult.breakdown.driver_hours).toFixed(2)} @ R$ {costResult.inputs.driver_hourly ?? 0}/h
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style={td}>Pedágios</td>
-                    <td style={tdNum}>{Number(costResult.breakdown.tolls_total).toFixed(2)}</td>
-                    <td style={td}>{(costResult.inputs.tolls || []).join(', ')}</td>
-                  </tr>
-                  <tr>
-                    <td style={td}>Extras</td>
-                    <td style={tdNum}>{Number(costResult.breakdown.extras_total).toFixed(2)}</td>
-                    <td style={td}>{(costResult.inputs.extras || []).map((e: any) => `${e.label}: ${Number(e.value).toFixed(2)}`).join(' | ')}</td>
-                  </tr>
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td style={{ ...td, fontWeight: 700 }}>TOTAL</td>
-                    <td style={{ ...tdNum, fontWeight: 700 }}>{Number(costResult.breakdown.total).toFixed(2)}</td>
-                    <td style={td}>BRL</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
         </div>
       )}
 

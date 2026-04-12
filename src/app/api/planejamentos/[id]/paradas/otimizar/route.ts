@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../../../../../lib/prisma';
 
+type Coord = [number, number]; // [lon, lat]
+
 type Ctx = { params: Promise<{ id: string }> };
 
 function jserr(e: any) {
@@ -223,17 +225,167 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
       ),
     );
 
+    // Recalcula rota real via ORS usando coordenadas existentes
+    const orsKey = process.env.ORS_API_KEY || '';
+    let routeGeojson: any = null;
+    let routeLegs: Array<{ from: string; to: string; km: number; dur_min: number }> = [];
+    let routeTotalKm = 0;
+    let routeTotalMin = 0;
+
+    if (orsKey) {
+      try {
+        // Build ordered coordinate list: origin (if available) + paradas
+        const allCoords: Array<{ lon: number; lat: number; label: string }> = [];
+        if (originCoord) {
+          allCoords.push({ lon: originCoord.lon, lat: originCoord.lat, label: originPayload?.label || 'Origem' });
+        }
+        for (const idx of validGlobalIdx) {
+          const p = paradas[idx];
+          allCoords.push({ lon: p.lon, lat: p.lat, label: p.label });
+        }
+
+        if (allCoords.length >= 2) {
+          const features: any[] = [];
+          const legs: Array<{ from: string; to: string; km: number; dur_min: number }> = [];
+
+          for (let i = 0; i < allCoords.length - 1; i++) {
+            const a: Coord = [allCoords[i].lon, allCoords[i].lat];
+            const b: Coord = [allCoords[i + 1].lon, allCoords[i + 1].lat];
+
+            const resp = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+              method: 'POST',
+              headers: { 'Authorization': orsKey, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                coordinates: [a, b],
+                instructions: false,
+                units: 'km',
+                language: 'pt',
+                radiuses: [5000, 5000],
+              }),
+            });
+
+            if (!resp.ok) {
+              console.warn(`[otimizar] ORS leg ${i} failed:`, await resp.text().catch(() => ''));
+              continue;
+            }
+
+            const geo = await resp.json();
+            const feat = geo?.features?.[0];
+            const sum = feat?.properties?.summary;
+
+            const rawDist = Number(sum?.distance ?? 0);
+            const seconds = Number(sum?.duration ?? 0);
+
+            // Detect unit: haversine check
+            const R = 6371;
+            const toRad = (x: number) => x * Math.PI / 180;
+            const dLat = toRad(b[1] - a[1]);
+            const dLon = toRad(b[0] - a[0]);
+            const hav = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[1])) * Math.cos(toRad(b[1])) * Math.sin(dLon / 2) ** 2;
+            const great = 2 * R * Math.asin(Math.sqrt(hav));
+            const km = (great > 5 && rawDist > 1000) ? Number((rawDist / 1000).toFixed(2)) : Number(rawDist.toFixed(2));
+            const dur_min = Math.round(seconds / 60);
+
+            features.push({
+              type: 'Feature',
+              properties: { from: allCoords[i].label, to: allCoords[i + 1].label, km, dur_min, idx: i + 1 },
+              geometry: feat.geometry,
+            });
+            legs.push({ from: allCoords[i].label, to: allCoords[i + 1].label, km, dur_min });
+
+            routeTotalKm += km;
+            routeTotalMin += dur_min;
+          }
+
+          routeGeojson = { type: 'FeatureCollection', features };
+          routeLegs = legs;
+
+          // Update km/min on paradas in DB
+          const paradaStart = originCoord ? 0 : 1; // if origin exists, leg 0 = origin→parada0
+          for (let i = 0; i < validGlobalIdx.length; i++) {
+            const legIdx = originCoord ? i : i; // leg index for this parada
+            const leg = legs[legIdx];
+            if (leg) {
+              await prisma.parada.update({
+                where: { id: paradas[validGlobalIdx[i]].id },
+                data: {
+                  kmTrecho: leg.km,
+                  durMinTrecho: leg.dur_min,
+                },
+              });
+            }
+          }
+
+          // Update planejamento payload with new route data
+          const points = allCoords.map(c => ({ label: c.label, lon: c.lon, lat: c.lat }));
+          await prisma.planejamento.update({
+            where: { id: planId },
+            data: {
+              payload: {
+                points,
+                legs: routeLegs,
+                total_km: Number(routeTotalKm.toFixed(2)),
+                total_dur_min: routeTotalMin,
+                geojson: routeGeojson,
+              },
+            },
+          });
+        }
+      } catch (routeErr: any) {
+        console.warn('[otimizar] ORS route calc failed (non-fatal):', routeErr?.message);
+      }
+    }
+
     const atualizadas = await prisma.parada.findMany({
       where: { planejamentoId: planId },
       orderBy: { ordem: 'asc' },
+      select: {
+        id: true,
+        ordem: true,
+        label: true,
+        lon: true,
+        lat: true,
+        kmTrecho: true,
+        durMinTrecho: true,
+        coletaId: true,
+        createdAt: true,
+        Coleta: {
+          select: {
+            id: true,
+            nf: true,
+            cidade: true,
+            uf: true,
+            valorFrete: true,
+            pesoTotalKg: true,
+            Cliente: { select: { id: true, razao: true, percentualFrete: true } },
+          },
+        },
+      },
     });
 
     return NextResponse.json({
       ok: true,
-      message:
-        'Paradas otimizadas com base na menor distância geodésica (aproximação). Recalcule os trechos para atualizar km/min.',
+      message: routeGeojson
+        ? 'Paradas otimizadas e rota recalculada.'
+        : 'Paradas otimizadas (rota não recalculada — clique em "Calcular rota").',
       distanciaAproximadaKm: bestDist,
+      routeTotalKm: Number(routeTotalKm.toFixed(2)),
+      routeTotalMin,
       paradas: atualizadas,
+      route: routeGeojson ? {
+        points: routeLegs.length > 0 ? (() => {
+          const pts: Array<{ label: string; lon: number; lat: number }> = [];
+          if (originCoord) pts.push({ label: originPayload?.label || 'Origem', lon: originCoord.lon, lat: originCoord.lat });
+          for (const idx of validGlobalIdx) {
+            pts.push({ label: paradas[idx].label, lon: paradas[idx].lon, lat: paradas[idx].lat });
+          }
+          return pts;
+        })() : [],
+        legs: routeLegs,
+        total_km: Number(routeTotalKm.toFixed(2)),
+        total_dur_min: routeTotalMin,
+        geojson: routeGeojson,
+      } : null,
     });
   } catch (e: any) {
     console.error('[paradas/otimizar] erro', e);
