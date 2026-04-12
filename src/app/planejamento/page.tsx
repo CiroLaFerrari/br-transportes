@@ -58,6 +58,9 @@ type ParadaRow = {
     nf: string;
     cidade: string;
     uf: string;
+    valorFrete: number | null;
+    pesoTotalKg: number | null;
+    Cliente?: { id: string; razao: string; percentualFrete?: number | null } | null;
   } | null;
 };
 
@@ -1448,9 +1451,59 @@ export default function PlanejamentoPage() {
       const vincJ = await vincRes.json();
       if (!vincRes.ok) throw new Error(vincJ?.error || 'Falha ao vincular coletas');
 
-      setParadasInfo(`${rows.length} coleta(s) vinculadas como paradas com sucesso!`);
+      // 3) Load paradas and calculate route
       await loadParadas();
       setPatioSelected({});
+
+      // 4) Auto-calculate route from paradas
+      try {
+        const seen = new Set<string>();
+        const cities: string[] = [];
+        for (const c of rows) {
+          const cidade = String(c.cidade || '').trim();
+          const uf = String(c.uf || '').trim().toUpperCase();
+          if (!cidade || uf.length !== 2) continue;
+          const key = `${cidade.toUpperCase()}, ${uf}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          cities.push(`${cidade}, ${uf}, Brasil`);
+        }
+
+        if (cities.length > 0) {
+          const orig = origin.trim() || 'São Carlos, SP, Brasil';
+          if (!origin.trim()) setOrigin(orig);
+          setDestinos(cities.join('\n'));
+
+          const routeRes = await fetch('/api/maps/route', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ places: [orig, ...cities] }),
+          });
+          const routeJ = await routeRes.json();
+          if (routeRes.ok) {
+            const resp: ApiResp = {
+              points: (routeJ.points || []) as ApiPoint[],
+              legs: (routeJ.legs || []) as ApiLeg[],
+              total_km: Number(routeJ.total_km),
+              total_dur_min: Number(routeJ.total_dur_min),
+              geojson: routeJ.geojson,
+            };
+            setData(resp);
+
+            const pts = (resp.points || []).map((p) => ({
+              label: p.label,
+              coord: [p.lon, p.lat] as [number, number],
+            }));
+            const lines = (resp.geojson?.features || []).map((f: any) => f?.geometry).filter(Boolean);
+            setMapPoints(pts);
+            setMapLines(lines);
+          }
+        }
+      } catch {
+        // route calc is non-critical
+      }
+
+      setParadasInfo(`${rows.length} coleta(s) vinculadas como paradas com sucesso!`);
     } catch (e: any) {
       setError(e?.message || 'Falha ao vincular selecionadas');
       setParadasError(e?.message || 'Falha ao vincular selecionadas');
@@ -2531,9 +2584,9 @@ export default function PlanejamentoPage() {
                   <th style={th}>#</th>
                   <th style={th}>Label</th>
                   <th style={th}>NF</th>
-                  <th style={th}>Valor NF</th>
-                  <th style={th}>% Frete</th>
+                  <th style={th}>Peso</th>
                   <th style={th}>Frete (R$)</th>
+                  <th style={th}>Cliente</th>
                   <th style={th}>Km (trecho)</th>
                   <th style={th}>Min (trecho)</th>
                   <th style={th}>Status</th>
@@ -2542,18 +2595,17 @@ export default function PlanejamentoPage() {
               </thead>
               <tbody>
                 {paradas.map((p, idx) => {
-                  const coleta = (p as any).Coleta;
-                  const pctFrete = coleta?.Cliente?.percentualFrete ?? null;
-                  const valorNf = coleta?.valorFrete ?? null;
-                  const freteCalc = pctFrete != null && valorNf != null ? valorNf * (pctFrete / 100) : null;
+                  const coleta = p.Coleta;
+                  const valorFrete = coleta?.valorFrete ?? null;
+                  const pesoKg = coleta?.pesoTotalKg ?? null;
                   return (
                   <tr key={p.id}>
                     <td style={{ ...td, width: 40 }}>{idx + 1}</td>
                     <td style={td}>{p.label}</td>
                     <td style={td}>{coleta?.nf ?? '-'}</td>
-                    <td style={tdNum}>{valorNf != null ? Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorNf) : '-'}</td>
-                    <td style={tdNum}>{pctFrete != null ? `${pctFrete}%` : '-'}</td>
-                    <td style={tdNum}>{freteCalc != null ? Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(freteCalc) : '-'}</td>
+                    <td style={tdNum}>{pesoKg != null ? Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(pesoKg) + ' kg' : '-'}</td>
+                    <td style={tdNum}>{valorFrete != null ? Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorFrete) : '-'}</td>
+                    <td style={td}>{coleta?.Cliente?.razao ?? '-'}</td>
                     <td style={tdNum}>{p.kmTrecho != null ? p.kmTrecho.toFixed(2) : '-'}</td>
                     <td style={tdNum}>{p.durMinTrecho != null ? p.durMinTrecho : '-'}</td>
                     <td style={td}>{p.statusExec ?? 'PENDENTE'}</td>
