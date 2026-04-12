@@ -276,14 +276,15 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
             const rawDist = Number(sum?.distance ?? 0);
             const seconds = Number(sum?.duration ?? 0);
 
-            // Detect unit: haversine check
+            // Detect unit: ratio-based (rawDist/haversine > 10 = meters)
             const R = 6371;
             const toRad = (x: number) => x * Math.PI / 180;
             const dLat = toRad(b[1] - a[1]);
             const dLon = toRad(b[0] - a[0]);
             const hav = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[1])) * Math.cos(toRad(b[1])) * Math.sin(dLon / 2) ** 2;
             const great = 2 * R * Math.asin(Math.sqrt(hav));
-            const km = (great > 5 && rawDist > 1000) ? Number((rawDist / 1000).toFixed(2)) : Number(rawDist.toFixed(2));
+            const ratio = great > 0 ? rawDist / great : 0;
+            const km = ratio > 10 ? Number((rawDist / 1000).toFixed(2)) : Number(rawDist.toFixed(2));
             const dur_min = Math.round(seconds / 60);
 
             features.push({

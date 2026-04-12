@@ -769,8 +769,16 @@ export default function PlanejamentoPage() {
 
       // 2) Atualiza kmTrecho/durMinTrecho nas paradas com base nos legs
       if (resp.legs && resp.legs.length > 0) {
-        const paradasAtual = paradas.length > 0 ? paradas : await fetch(`/api/planejamentos/${id}/paradas`).then(r => r.json()).then(j => (j.value || j.paradas || []) as ParadaRow[]);
+        // Busca paradas atuais (do state ou do servidor)
+        let paradasAtual = paradas;
+        if (paradasAtual.length === 0) {
+          const pRes = await fetch(`/api/planejamentos/${id}/paradas`);
+          const pJ = await pRes.json();
+          paradasAtual = ((pJ.value || pJ.paradas || []) as ParadaRow[]);
+        }
         const sorted = [...paradasAtual].sort((a, b) => a.ordem - b.ordem);
+
+        // Patch cada parada com km/min do leg correspondente
         for (let i = 0; i < sorted.length && i < resp.legs.length; i++) {
           const leg = resp.legs[i];
           const km = typeof leg.km === 'number' ? leg.km : (typeof leg.distance === 'number' ? (leg.distance > 1000 ? leg.distance / 1000 : leg.distance) : null);
@@ -783,8 +791,16 @@ export default function PlanejamentoPage() {
             });
           }
         }
-        // Recarrega paradas para refletir os novos km/min
-        await loadParadas();
+
+        // Recarrega paradas SEM sobrescrever o mapa (não chama refreshMapFromParadas)
+        const freshRes = await fetch(`/api/planejamentos/${id}/paradas`);
+        const freshJ = await freshRes.json();
+        const freshArr = ((freshJ.value || freshJ.paradas || []) as ParadaRow[]).sort((a, b) => a.ordem - b.ordem);
+        setParadas(freshArr);
+
+        // Carrega métricas
+        const ids = Array.from(new Set(freshArr.map((p) => p.coletaId).filter(Boolean)));
+        if (ids.length) void loadMetricas(ids);
       }
     } catch (err) {
       console.warn('persistRouteData non-fatal error:', err);
@@ -1091,7 +1107,10 @@ export default function PlanejamentoPage() {
       setParadas(arr);
       setParadasInfo(`Carregado: ${arr.length} parada(s).`);
 
-      if (arr.length > 0) refreshMapFromParadas(arr);
+      // Só atualiza mapa com linhas retas se NÃO existir rota GeoJSON calculada
+      if (arr.length > 0 && (!data?.geojson?.features?.length)) {
+        refreshMapFromParadas(arr);
+      }
 
       // ✅ carrega métricas (volumes) das coletas vinculadas
       const ids = Array.from(new Set(arr.map((p) => p.coletaId).filter(Boolean)));

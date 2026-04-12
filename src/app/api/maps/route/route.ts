@@ -107,26 +107,28 @@ async function directionsORS(a: Coord, b: Coord, key: string, labelA?: string, l
   const feat = geo?.features?.[0];
   const sum = feat?.properties?.summary;
 
-  const rawDist = Number(sum?.distance ?? 0);   // pode vir em km (ex.: ~700) ou metros (ex.: ~700000)
+  const rawDist = Number(sum?.distance ?? 0);   // pode vir em km ou metros dependendo da versão ORS
   const seconds = Number(sum?.duration ?? 0);
 
-  // Heurística segura para detectar unidade:
-  // - Para trechos >5 km (haversine), se rawDist > 1000, assumimos METROS -> divide por 1000.
-  // - Caso contrário, assumimos já estar em KM.
+  // Detecção de unidade robusta:
+  // Comparamos rawDist com a distância haversine (que sabemos estar em km).
+  // Se rawDist/haversine > 10, ORS retornou em metros → divide por 1000.
+  // Se rawDist/haversine <= 10, ORS retornou em km → usa direto.
   const great = haversineKm(a, b);
-  const km = (great > 5 && rawDist > 1000) ? Number((rawDist / 1000).toFixed(2))
-                                           : Number(rawDist.toFixed(2));
+  const ratio = great > 0 ? rawDist / great : 0;
+  const isMeters = ratio > 10; // ex.: 2.630.000 m / 2100 km = 1252 → metros; 2630 km / 2100 km = 1.25 → km
+  const km = isMeters ? Number((rawDist / 1000).toFixed(2)) : Number(rawDist.toFixed(2));
   const dur_min = Math.round(seconds / 60);
 
   // Sanidade (rota não pode ser muito maior que a linha reta)
   if (great > 0 && km / great > 5) {
-    throw new Error(`Distância inconsistente (km=${km}, haversine=${great.toFixed(2)}, raw=${rawDist})`);
+    throw new Error(`Distância inconsistente (km=${km}, haversine=${great.toFixed(2)}, raw=${rawDist}, ratio=${ratio.toFixed(1)})`);
   }
 
   // Log para diagnóstico
-  console.log('[ORS raw]', { rawDist, unit: (great > 5 && rawDist > 1000) ? 'meters→km' : 'km', seconds });
+  console.log('[ORS raw]', { rawDist, great: great.toFixed(1), ratio: ratio.toFixed(2), unit: isMeters ? 'meters→km' : 'km', seconds });
 
-  return { geometry: feat.geometry, km, dur_min, rawDist, seconds, unit: (great > 5 && rawDist > 1000) ? 'm' : 'km' };
+  return { geometry: feat.geometry, km, dur_min, rawDist, seconds, unit: isMeters ? 'm' : 'km' };
 }
 
 export async function POST(req: NextRequest) {
