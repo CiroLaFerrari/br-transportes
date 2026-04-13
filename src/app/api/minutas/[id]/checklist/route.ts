@@ -70,12 +70,27 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     const conferente = String(body?.conferente || '').trim() || null;
     const notes = String(body?.notes || '').trim() || null;
 
-    const up = await prisma.carregamentoChecklist.upsert({
-      where: { minutaId },
-      update: { conferente, notes },
-      create: { minutaId, conferente, notes },
-      select: { id: true, minutaId: true },
-    });
+    let up: { id: string; minutaId: string } | null = null;
+    try {
+      up = await prisma.carregamentoChecklist.upsert({
+        where: { minutaId },
+        update: { conferente, notes },
+        create: { minutaId, conferente, notes },
+        select: { id: true, minutaId: true },
+      });
+    } catch (upsertErr: any) {
+      // Race condition: outro request criou entre o where e o create
+      if (upsertErr?.code === 'P2002') {
+        up = await prisma.carregamentoChecklist.update({
+          where: { minutaId },
+          data: { conferente, notes },
+          select: { id: true, minutaId: true },
+        });
+      } else {
+        throw upsertErr;
+      }
+    }
+    if (!up) return json({ ok: false, error: 'Falha ao criar/atualizar checklist' }, 500);
 
     return json({ ok: true, checklistId: up.id, minutaId: up.minutaId }, 200);
   } catch (e: any) {

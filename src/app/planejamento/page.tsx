@@ -2265,10 +2265,6 @@ export default function PlanejamentoPage() {
               Recalcular trechos
             </button>
 
-            <button onClick={otimizarParadas} disabled={paradasLoading} style={{ ...btn, background: '#f97316', color: '#1e293b', opacity: paradasLoading ? 0.7 : 1 }}>
-              Otimizar ordem (km)
-            </button>
-
             <button onClick={oneClickGerarRotaEAbrirScan} disabled={paradasLoading || oneClickLoading} style={{ ...btn, background: '#1A4A1A', color: 'white', padding: '8px 14px', opacity: paradasLoading || oneClickLoading ? 0.7 : 1 }} title="Gera/normaliza a rota do planejamento (resetando status das paradas) e abre a tela /scan já com rotaId">
               {oneClickLoading ? 'Preparando…' : '1 clique: gerar rota + abrir /scan'}
             </button>

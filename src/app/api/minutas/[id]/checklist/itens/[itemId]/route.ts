@@ -30,13 +30,27 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     const status = normStatus(body?.status);
     const note = String(body?.note || '').trim() || null;
 
-    // garante checklist
-    const checklist = await prisma.carregamentoChecklist.upsert({
-      where: { minutaId },
-      update: {},
-      create: { minutaId },
-      select: { id: true },
-    });
+    // garante checklist (com fallback para race condition)
+    let checklist: { id: string } | null = null;
+    try {
+      checklist = await prisma.carregamentoChecklist.upsert({
+        where: { minutaId },
+        update: {},
+        create: { minutaId },
+        select: { id: true },
+      });
+    } catch (upsertErr: any) {
+      // Race condition: outro request criou entre o where e o create
+      if (upsertErr?.code === 'P2002') {
+        checklist = await prisma.carregamentoChecklist.findUnique({
+          where: { minutaId },
+          select: { id: true },
+        });
+      } else {
+        throw upsertErr;
+      }
+    }
+    if (!checklist) return json({ ok: false, error: 'Falha ao garantir checklist' }, 500);
 
     // garante que o volume existe
     const vol = await prisma.minutaVolume.findUnique({

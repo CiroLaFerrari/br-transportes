@@ -61,67 +61,146 @@ const fmt = Intl.NumberFormat('pt-BR');
 const fmtDec = Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
 const fmtBRL = Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
-function downloadExcel(filename: string, headers: string[], rows: string[][]) {
-  // Build simple XLSX (Office Open XML) using a single-sheet workbook
-  const escXml = (v: string) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+function downloadExcel(filename: string, headers: string[], rows: string[][], options?: { title?: string; subtitle?: string }) {
+  const esc = (v: string) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const colCount = headers.length;
+  const today = new Date().toLocaleDateString('pt-BR');
+  const title = options?.title || 'Relatório BR Transportes';
+  const subtitle = options?.subtitle || '';
 
-  let sheetRows = '<row r="1">' + headers.map((h, i) => {
-    const col = String.fromCharCode(65 + (i % 26));
-    return `<c r="${col}1" t="inlineStr"><is><t>${escXml(h)}</t></is></c>`;
-  }).join('') + '</row>';
+  let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="UTF-8">
+<!--[if gte mso 9]><xml>
+<x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+<x:Name>Relatório</x:Name>
+<x:WorksheetOptions><x:FreezePanes/><x:FrozenNoSplit/><x:SplitHorizontal>${subtitle ? 5 : 4}</x:SplitHorizontal><x:TopRowBottomPane>${subtitle ? 5 : 4}</x:TopRowBottomPane></x:WorksheetOptions>
+</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook>
+</xml><![endif]-->
+<style>
+  body { font-family: Calibri, Arial, sans-serif; }
+  td, th { mso-number-format:\\@; }
+</style>
+</head>
+<body>
+<table border="0" cellpadding="0" cellspacing="0">`;
 
+  // Row 1: Company branding header — dark green bar with company name
+  html += `<tr style="height:36pt">
+    <td colspan="${colCount}" style="background:#1A4A1A;color:#FFFFFF;font-size:18pt;font-weight:bold;padding:8px 12px;border:none;font-family:Calibri,Arial,sans-serif;letter-spacing:1px">
+      BR Transportes e Logística
+    </td>
+  </tr>`;
+
+  // Row 2: Report title — gold accent bar
+  html += `<tr style="height:28pt">
+    <td colspan="${colCount}" style="background:#F5BE16;color:#1A4A1A;font-size:13pt;font-weight:bold;padding:6px 12px;border:none;font-family:Calibri,Arial,sans-serif">
+      ${esc(title)}
+    </td>
+  </tr>`;
+
+  // Row 3: Subtitle / date info
+  if (subtitle) {
+    html += `<tr style="height:20pt">
+      <td colspan="${colCount}" style="background:#f0fdf0;color:#475569;font-size:10pt;padding:4px 12px;border-bottom:1px solid #d1d5db;font-family:Calibri,Arial,sans-serif">
+        ${esc(subtitle)} &nbsp;|&nbsp; Gerado em: ${today}
+      </td>
+    </tr>`;
+  } else {
+    html += `<tr style="height:20pt">
+      <td colspan="${colCount}" style="background:#f0fdf0;color:#475569;font-size:10pt;padding:4px 12px;border-bottom:1px solid #d1d5db;font-family:Calibri,Arial,sans-serif">
+        Gerado em: ${today}
+      </td>
+    </tr>`;
+  }
+
+  // Column headers — dark green background, white bold text, uppercase
+  html += '<tr style="height:24pt">';
+  for (const h of headers) {
+    const isNumeric = /peso|frete|valor|km|min|dias|coletas|máx|méd/i.test(h);
+    html += `<th style="background:#1A4A1A;color:#FFFFFF;font-weight:bold;font-size:10pt;padding:6px 10px;border:1px solid #0d2d0d;text-align:${isNumeric ? 'right' : 'left'};text-transform:uppercase;letter-spacing:0.5px;font-family:Calibri,Arial,sans-serif;white-space:nowrap">
+      ${esc(h)}
+    </th>`;
+  }
+  html += '</tr>';
+
+  // Data rows — zebra striping with light green/white
   for (let r = 0; r < rows.length; r++) {
-    const rowNum = r + 2;
-    let cells = '';
+    const bg = r % 2 === 0 ? '#FFFFFF' : '#f0fdf4';
+    html += `<tr style="height:18pt">`;
     for (let c = 0; c < rows[r].length; c++) {
-      const col = String.fromCharCode(65 + (c % 26));
-      const val = rows[r][c];
-      // Try numeric
-      const num = val.replace(',', '.').replace(/\s/g, '');
-      if (val && !isNaN(Number(num)) && num !== '') {
-        cells += `<c r="${col}${rowNum}"><v>${num}</v></c>`;
+      const v = rows[r][c];
+      const hdr = headers[c] || '';
+      const isNumeric = /peso|frete|valor|km|min|dias|coletas|máx|méd/i.test(hdr);
+      const isCurrency = /frete|valor/i.test(hdr);
+      const isStatus = /status/i.test(hdr);
+
+      // Status color coding
+      let extraStyle = '';
+      if (isStatus) {
+        const vUp = v.toUpperCase();
+        if (vUp.includes('ENTREGUE') || vUp === 'NÃO') extraStyle = 'color:#16a34a;font-weight:bold;';
+        else if (vUp.includes('TRANSITO') || vUp.includes('CARGA')) extraStyle = 'color:#d97706;font-weight:bold;';
+        else if (vUp.includes('PATIO') || vUp === 'SIM') extraStyle = 'color:#dc2626;font-weight:bold;';
+      }
+
+      // Lead time color coding (red if > 15, orange if > 7)
+      if (/lead.*dias|média.*dias/i.test(hdr)) {
+        const numVal = parseFloat(v.replace(',', '.'));
+        if (!isNaN(numVal)) {
+          if (numVal > 15) extraStyle = 'color:#dc2626;font-weight:bold;';
+          else if (numVal > 7) extraStyle = 'color:#d97706;font-weight:bold;';
+          else extraStyle = 'color:#16a34a;font-weight:bold;';
+        }
+      }
+
+      // Currency formatting
+      if (isCurrency) extraStyle += 'mso-number-format:"R\\$ \\#\\,\\#\\#0\\.00";';
+
+      html += `<td style="background:${bg};padding:5px 10px;border:1px solid #e2e8f0;font-size:10pt;text-align:${isNumeric ? 'right' : 'left'};color:#1e293b;font-family:Calibri,Arial,sans-serif;vertical-align:middle;${extraStyle}">
+        ${esc(v)}
+      </td>`;
+    }
+    html += '</tr>';
+  }
+
+  // Totals/summary row if applicable — count numeric columns
+  if (rows.length > 1) {
+    html += `<tr style="height:22pt">`;
+    for (let c = 0; c < headers.length; c++) {
+      const hdr = headers[c] || '';
+      const isSummable = /peso|frete|valor|coletas/i.test(hdr);
+      if (c === 0) {
+        html += `<td style="background:#1A4A1A;color:#FFFFFF;font-weight:bold;font-size:10pt;padding:6px 10px;border:1px solid #0d2d0d;font-family:Calibri,Arial,sans-serif">
+          TOTAL (${rows.length} registros)
+        </td>`;
+      } else if (isSummable) {
+        let sum = 0;
+        let hasVal = false;
+        for (const row of rows) {
+          const raw = (row[c] || '').replace(/[R$\s.]/g, '').replace(',', '.');
+          const n = parseFloat(raw);
+          if (!isNaN(n)) { sum += n; hasVal = true; }
+        }
+        const display = hasVal ? sum.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+        html += `<td style="background:#1A4A1A;color:#F5BE16;font-weight:bold;font-size:10pt;padding:6px 10px;border:1px solid #0d2d0d;text-align:right;font-family:Calibri,Arial,sans-serif">
+          ${esc(display)}
+        </td>`;
       } else {
-        cells += `<c r="${col}${rowNum}" t="inlineStr"><is><t>${escXml(val)}</t></is></c>`;
+        html += `<td style="background:#1A4A1A;border:1px solid #0d2d0d"></td>`;
       }
     }
-    sheetRows += `<row r="${rowNum}">${cells}</row>`;
+    html += '</tr>';
   }
 
-  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`;
+  // Footer row
+  html += `<tr><td colspan="${colCount}" style="font-size:8pt;color:#94a3b8;padding:8px 12px;border:none;font-family:Calibri,Arial,sans-serif">
+    BR Transportes e Logística — Sistema de Planejamento de Entregas — ${today}
+  </td></tr>`;
 
-  const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Relatório" sheetId="1" r:id="rId1"/></sheets></workbook>`;
-
-  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`;
-
-  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`;
-
-  const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
-
-  // Use JSZip-like manual ZIP via Blob — simpler: use the fflate or just do CSV with xlsx extension
-  // Actually, let's use a proper approach with the ZIP format
-  // For maximum compatibility without deps, we'll use a semicolon-separated CSV saved as .xlsx
-  // Better approach: build the ZIP manually using compression API or just install xlsx
-
-  // Simplest reliable approach: HTML table → Excel recognizes it
-  let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Relatório</x:Name></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body><table>';
-  html += '<tr>' + headers.map(h => `<th style="font-weight:bold;background:#f0f0f0;border:1px solid #ccc">${escXml(h)}</th>`).join('') + '</tr>';
-  for (const row of rows) {
-    html += '<tr>' + row.map(v => {
-      const num = v.replace(',', '.').replace(/\s/g, '');
-      if (v && !isNaN(Number(num)) && num !== '') {
-        return `<td style="border:1px solid #eee" x:num="${num}">${escXml(v)}</td>`;
-      }
-      return `<td style="border:1px solid #eee">${escXml(v)}</td>`;
-    }).join('') + '</tr>';
-  }
   html += '</table></body></html>';
 
-  const xlsName = filename.replace(/\.csv$/i, '.xls');
+  const xlsName = filename.replace(/\.(csv|xls)$/i, '.xls');
   const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -388,7 +467,10 @@ function PatioTab() {
                 fmtDateBR(c.fimPatioAt),
                 c.leadTimeDias != null ? String(c.leadTimeDias) : '',
               ]);
-              downloadExcel(`relatorio_detalhado_${dateFrom}_${dateTo}.xls`, headers, rows);
+              downloadExcel(`relatorio_detalhado_${dateFrom}_${dateTo}.xls`, headers, rows, {
+                title: 'Relatório Detalhado — Lead Time de Pátio',
+                subtitle: `Período: ${fmtDateBR(dateFrom)} a ${fmtDateBR(dateTo)} | Filtro: ${statusFilter === 'ALL' ? 'Todos' : statusFilter}`,
+              });
             }}
           >
             Exportar Detalhado Excel
@@ -632,7 +714,10 @@ function PatioClientes({ data, coletas, dateFrom, dateTo }: { data: PatioReport[
       c.leadTimeDias != null ? String(c.leadTimeDias) : '',
     ]);
     const safeName = clienteName.replace(/[^a-zA-Z0-9_-]/g, '_');
-    downloadExcel(`relatorio_${safeName}_${dateFrom}_${dateTo}.xls`, headers, rows);
+    downloadExcel(`relatorio_${safeName}_${dateFrom}_${dateTo}.xls`, headers, rows, {
+      title: `Relatório por Cliente — ${clienteName}`,
+      subtitle: `Período: ${fmtDateBR(dateFrom)} a ${fmtDateBR(dateTo)}`,
+    });
   }
 
   return (

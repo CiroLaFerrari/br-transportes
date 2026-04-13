@@ -31,9 +31,9 @@ type VeiculoInfo = {
 };
 
 const COLORS = [
-  '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6',
-  '#ec4899', '#06b6d4', '#f97316', '#14b8a6', '#a855f7',
-  '#64748b', '#e11d48', '#0ea5e9', '#84cc16', '#d946ef',
+  '#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed',
+  '#db2777', '#0891b2', '#ea580c', '#0d9488', '#a855f7',
+  '#475569', '#e11d48', '#0284c7', '#65a30d', '#c026d3',
 ];
 
 function getColor(index: number) {
@@ -49,6 +49,7 @@ export default function CargaLayoutPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [planName, setPlanName] = useState('');
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -96,67 +97,89 @@ export default function CargaLayoutPage() {
     }
   }
 
-  // Layout computation: simple greedy strip packing (top-down view)
-  const truckW = veiculo?.largCm || 250; // default 250cm wide
-  const truckL = veiculo?.compCm || 1400; // default 14m long
+  // Layout computation
+  const truckW = veiculo?.largCm || 250;
+  const truckL = veiculo?.compCm || 1400;
 
-  type PlacedBox = Box & { x: number; y: number; w: number; h: number; color: string; idx: number };
+  type PlacedBox = Box & { x: number; y: number; w: number; h: number; color: string; idx: number; label: string };
 
   function computeLayout(): PlacedBox[] {
-    const sorted = [...boxes].sort((a, b) => {
-      // FRONTAL first, then by size descending
-      const pa = a.posicao === 'FRONTAL' ? 0 : 1;
-      const pb = b.posicao === 'FRONTAL' ? 0 : 1;
-      if (pa !== pb) return pa - pb;
-      const areaA = (a.comprimentoCm || 100) * (a.larguraCm || 100);
-      const areaB = (b.comprimentoCm || 100) * (b.larguraCm || 100);
-      return areaB - areaA;
-    });
-
-    const placed: PlacedBox[] = [];
-    // Simple shelf/strip algorithm
-    let shelfY = 0;
-    let shelfX = 0;
-    let shelfH = 0;
-
+    // Expand boxes by quantity and sort: FRONTAL first, then by area descending
+    const expanded: { box: Box; color: string; sortKey: number }[] = [];
     let colorIdx = 0;
     const coletaColorMap = new Map<string, string>();
 
-    for (const box of sorted) {
-      const qty = box.quantidade || 1;
+    for (const box of boxes) {
       if (!coletaColorMap.has(box.coletaId)) {
         coletaColorMap.set(box.coletaId, getColor(colorIdx++));
       }
       const color = coletaColorMap.get(box.coletaId) || '#666';
-
+      const qty = box.quantidade || 1;
       for (let q = 0; q < qty; q++) {
-        const w = box.larguraCm || Math.min(truckW, 80);
-        const h = box.comprimentoCm || Math.min(truckL / 4, 120);
+        expanded.push({ box, color, sortKey: 0 });
+      }
+    }
 
-        if (shelfX + w > truckW) {
+    // Sort: FRONTAL first, then largest items first (better packing)
+    expanded.sort((a, b) => {
+      const pa = a.box.posicao === 'FRONTAL' ? 0 : 1;
+      const pb = b.box.posicao === 'FRONTAL' ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+      const aW = a.box.larguraCm || 60;
+      const aH = a.box.comprimentoCm || 60;
+      const bW = b.box.larguraCm || 60;
+      const bH = b.box.comprimentoCm || 60;
+      return (bW * bH) - (aW * aH);
+    });
+
+    const placed: PlacedBox[] = [];
+
+    // Shelf-based strip packing (top-view: x=width, y=length from front)
+    let shelfY = 0;
+    let shelfX = 0;
+    let shelfH = 0;
+
+    for (const { box, color } of expanded) {
+      // Use real dimensions, with sensible defaults for missing values
+      let w = box.larguraCm || 60;
+      let h = box.comprimentoCm || 60;
+
+      // If width is 0 or very small, derive from other dimensions or use default
+      if (w < 5) w = box.alturaCm && box.alturaCm > 5 ? Math.min(box.alturaCm, truckW) : 60;
+      if (h < 5) h = box.alturaCm && box.alturaCm > 5 ? Math.min(box.alturaCm, 120) : 60;
+
+      // Clamp to truck dimensions
+      w = Math.min(w, truckW);
+      h = Math.min(h, truckL);
+
+      // Try to fit; if doesn't fit horizontally, try rotating
+      if (shelfX + w > truckW) {
+        // Try rotated (swap w and h)
+        if (shelfX + h <= truckW && h <= truckW) {
+          const tmp = w;
+          w = h;
+          h = tmp;
+        } else {
           // New shelf
           shelfY += shelfH;
           shelfX = 0;
           shelfH = 0;
         }
-
-        if (shelfY + h > truckL) {
-          // Overflow — still place but will be cut off visually
-        }
-
-        placed.push({
-          ...box,
-          x: shelfX,
-          y: shelfY,
-          w,
-          h,
-          color,
-          idx: placed.length,
-        });
-
-        shelfX += w;
-        if (h > shelfH) shelfH = h;
       }
+
+      placed.push({
+        ...box,
+        x: shelfX,
+        y: shelfY,
+        w,
+        h,
+        color,
+        idx: placed.length,
+        label: box.produtoCode.length > 14 ? box.produtoCode.slice(0, 12) + '..' : box.produtoCode,
+      });
+
+      shelfX += w;
+      if (h > shelfH) shelfH = h;
     }
 
     return placed;
@@ -164,140 +187,247 @@ export default function CargaLayoutPage() {
 
   const placedBoxes = computeLayout();
 
-  // SVG scale - ensure minimum visible size
-  const svgPadding = 30;
-  const targetW = 600; // target width in pixels
-  const scale = Math.max(targetW / truckW, 0.3); // ensure minimum scale
-  const svgW = truckW * scale + svgPadding * 2;
-  const svgH = truckL * scale + svgPadding * 2;
+  // Calculate actual used area
+  const maxY = placedBoxes.reduce((m, b) => Math.max(m, b.y + b.h), 0);
+  const displayTruckL = Math.max(truckL, maxY + 20);
+
+  // SVG sizing — fit to a nice width, scale proportionally
+  const svgTargetW = 500;
+  const scale = svgTargetW / truckW;
+  const svgPad = 40;
+  const svgW = truckW * scale + svgPad * 2;
+  const svgH = Math.min(displayTruckL * scale + svgPad * 2, 900);
 
   const totalVol = boxes.reduce((acc, b) => acc + (b.volumeM3Total || 0), 0);
   const totalItems = boxes.reduce((acc, b) => acc + (b.quantidade || 1), 0);
+  const truckVolM3 = veiculo ? (veiculo.compCm * veiculo.largCm * veiculo.altCm) / 1_000_000 : null;
+  const occupancy = truckVolM3 && truckVolM3 > 0 ? Math.min((totalVol / truckVolM3) * 100, 100) : null;
 
-  const th: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', border: '1px solid #e2e8f0', background: '#f8fafc', fontWeight: 700, color: '#1e293b' };
-  const td: React.CSSProperties = { padding: '6px 8px', border: '1px solid #e2e8f0', color: '#1e293b' };
+  // Styles
+  const cardStyle: React.CSSProperties = {
+    padding: '12px 16px',
+    border: '1px solid #e2e8f0',
+    background: '#ffffff',
+    borderRadius: 10,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+    fontSize: 14,
+  };
+
+  const th: React.CSSProperties = {
+    textAlign: 'left',
+    padding: '10px 12px',
+    borderBottom: '2px solid #1A4A1A',
+    background: '#f0fdf0',
+    fontWeight: 700,
+    color: '#1A4A1A',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+  };
+
+  const td: React.CSSProperties = {
+    padding: '8px 12px',
+    borderBottom: '1px solid #f1f5f9',
+    color: '#334155',
+    fontSize: 13,
+  };
 
   return (
-    <div style={{ padding: 16, color: '#1e293b', minHeight: '100vh' }}>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16 }}>
-        <Link href={`/planejamento`} style={{ color: '#1A4A1A', textDecoration: 'none', fontWeight: 600 }}>
+    <div style={{ padding: '20px 24px', color: '#1e293b', minHeight: '100vh', background: '#f8fafc' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20 }}>
+        <Link href="/planejamento" style={{ color: '#1A4A1A', textDecoration: 'none', fontWeight: 600, fontSize: 14 }}>
           Planejamento
         </Link>
-        <span style={{ opacity: 0.5 }}>/</span>
-        <h1 style={{ fontSize: 22, fontWeight: 900, margin: 0, color: '#1A4A1A' }}>
-          Layout de Carga {planName ? `— ${planName}` : ''}
+        <span style={{ opacity: 0.4, fontSize: 14 }}>/</span>
+        <h1 style={{ fontSize: 20, fontWeight: 900, margin: 0, color: '#1A4A1A' }}>
+          Layout de Carga {planName ? `\u2014 ${planName}` : ''}
         </h1>
       </div>
 
-      {error && <div style={{ color: '#dc2626', marginBottom: 12 }}>{error}</div>}
-      {loading && <div>Carregando...</div>}
+      {error && (
+        <div style={{ color: '#dc2626', marginBottom: 12, padding: '10px 14px', background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca', fontSize: 13 }}>
+          {error}
+        </div>
+      )}
+      {loading && <div style={{ padding: 20, color: '#64748b' }}>Carregando...</div>}
 
       {!loading && (
         <>
-          {/* Info */}
-          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 16, fontSize: 14 }}>
+          {/* Info Cards */}
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
             {veiculo && (
-              <div style={{ padding: 10, border: '1px solid #e2e8f0', background: '#ffffff', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-                <b>Veículo:</b> {veiculo.placa} — {veiculo.compCm}×{veiculo.largCm}×{veiculo.altCm} cm
+              <div style={cardStyle}>
+                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>Veículo</div>
+                <div style={{ fontWeight: 700, color: '#1A4A1A' }}>{veiculo.placa}</div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>{veiculo.compCm} × {veiculo.largCm} × {veiculo.altCm} cm</div>
               </div>
             )}
-            <div style={{ padding: 10, border: '1px solid #e2e8f0', background: '#ffffff', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-              <b>Itens:</b> {totalItems} | <b>Volume:</b> {totalVol.toFixed(3)} m³
+            <div style={cardStyle}>
+              <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>Itens</div>
+              <div style={{ fontWeight: 700, color: '#1A4A1A', fontSize: 18 }}>{totalItems}</div>
             </div>
+            <div style={cardStyle}>
+              <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>Volume Total</div>
+              <div style={{ fontWeight: 700, color: '#1A4A1A', fontSize: 18 }}>{totalVol.toFixed(3)} m³</div>
+            </div>
+            {occupancy !== null && (
+              <div style={cardStyle}>
+                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>Ocupação</div>
+                <div style={{ fontWeight: 700, color: occupancy > 90 ? '#dc2626' : occupancy > 70 ? '#d97706' : '#16a34a', fontSize: 18 }}>{occupancy.toFixed(1)}%</div>
+              </div>
+            )}
             {!veiculo && (
-              <div style={{ padding: 10, border: '1px solid #F5BE16', background: '#fef9e7', borderRadius: 12, color: '#92400e' }}>
-                Nenhum veículo vinculado — usando dimensões padrão ({truckW}×{truckL} cm)
+              <div style={{ ...cardStyle, border: '1px solid #F5BE16', background: '#fffbeb', color: '#92400e' }}>
+                <div style={{ fontSize: 12 }}>Nenhum veículo vinculado — usando dimensões padrão ({truckW}×{truckL} cm)</div>
               </div>
             )}
           </div>
 
           {/* SVG Layout */}
           {boxes.length > 0 ? (
-            <div style={{ marginBottom: 24, overflow: 'auto' }}>
-              <div style={{ fontSize: 13, marginBottom: 6, opacity: 0.7 }}>
+            <div style={{ marginBottom: 24, background: '#ffffff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              <div style={{ fontSize: 13, marginBottom: 10, color: '#64748b', fontWeight: 600 }}>
                 Vista superior (frente do veículo = topo)
               </div>
-              <svg width={svgW} height={svgH} style={{ background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-                {/* Truck outline */}
-                <rect
-                  x={svgPadding}
-                  y={svgPadding}
-                  width={truckW * scale}
-                  height={truckL * scale}
-                  fill="none"
-                  stroke="#475569"
-                  strokeWidth={2}
-                  strokeDasharray="8,4"
-                />
-                {/* Cab indicator */}
-                <rect
-                  x={svgPadding + truckW * scale * 0.2}
-                  y={svgPadding - 14}
-                  width={truckW * scale * 0.6}
-                  height={12}
-                  fill="#334155"
-                  rx={3}
-                />
-                <text
-                  x={svgPadding + truckW * scale * 0.5}
-                  y={svgPadding - 5}
-                  textAnchor="middle"
-                  fill="#94a3b8"
-                  fontSize={9}
-                >
-                  CABINE
-                </text>
+              <div style={{ overflow: 'auto' }}>
+                <svg width={svgW} height={svgH} style={{ background: '#fafbfc' }}>
+                  {/* Grid lines */}
+                  {Array.from({ length: Math.floor(truckW / 50) + 1 }).map((_, i) => (
+                    <line key={`gv${i}`} x1={svgPad + i * 50 * scale} y1={svgPad} x2={svgPad + i * 50 * scale} y2={svgPad + displayTruckL * scale} stroke="#e2e8f0" strokeWidth={0.5} />
+                  ))}
+                  {Array.from({ length: Math.floor(displayTruckL / 100) + 1 }).map((_, i) => (
+                    <line key={`gh${i}`} x1={svgPad} y1={svgPad + i * 100 * scale} x2={svgPad + truckW * scale} y2={svgPad + i * 100 * scale} stroke="#e2e8f0" strokeWidth={0.5} />
+                  ))}
 
-                {/* Placed boxes */}
-                {placedBoxes.map((b, i) => (
-                  <g key={i}>
-                    <rect
-                      x={svgPadding + b.x * scale}
-                      y={svgPadding + b.y * scale}
-                      width={b.w * scale}
-                      height={b.h * scale}
-                      fill={b.color + '44'}
-                      stroke={b.color}
-                      strokeWidth={1.5}
-                      rx={2}
-                    />
-                    {b.fragil && (
-                      <text
-                        x={svgPadding + b.x * scale + 3}
-                        y={svgPadding + b.y * scale + 12}
-                        fill="#fbbf24"
-                        fontSize={10}
-                        fontWeight={700}
+                  {/* Truck outline */}
+                  <rect
+                    x={svgPad}
+                    y={svgPad}
+                    width={truckW * scale}
+                    height={displayTruckL * scale}
+                    fill="none"
+                    stroke="#94a3b8"
+                    strokeWidth={2}
+                    rx={4}
+                  />
+
+                  {/* Cab indicator */}
+                  <rect
+                    x={svgPad + truckW * scale * 0.15}
+                    y={svgPad - 18}
+                    width={truckW * scale * 0.7}
+                    height={16}
+                    fill="#1A4A1A"
+                    rx={4}
+                  />
+                  <text
+                    x={svgPad + truckW * scale * 0.5}
+                    y={svgPad - 7}
+                    textAnchor="middle"
+                    fill="#ffffff"
+                    fontSize={9}
+                    fontWeight={700}
+                  >
+                    CABINE
+                  </text>
+
+                  {/* Dimension labels */}
+                  <text x={svgPad + truckW * scale / 2} y={svgPad + displayTruckL * scale + 16} textAnchor="middle" fill="#94a3b8" fontSize={10}>
+                    {truckW} cm
+                  </text>
+                  <text x={svgPad - 8} y={svgPad + displayTruckL * scale / 2} textAnchor="middle" fill="#94a3b8" fontSize={10} transform={`rotate(-90, ${svgPad - 8}, ${svgPad + displayTruckL * scale / 2})`}>
+                    {truckL} cm
+                  </text>
+
+                  {/* Placed boxes */}
+                  {placedBoxes.map((b, i) => {
+                    const isHovered = hoveredIdx === i;
+                    return (
+                      <g
+                        key={i}
+                        onMouseEnter={() => setHoveredIdx(i)}
+                        onMouseLeave={() => setHoveredIdx(null)}
+                        style={{ cursor: 'pointer' }}
                       >
-                        !
-                      </text>
-                    )}
-                    {b.w * scale > 30 && b.h * scale > 20 && (
-                      <text
-                        x={svgPadding + (b.x + b.w / 2) * scale}
-                        y={svgPadding + (b.y + b.h / 2) * scale}
-                        textAnchor="middle"
-                        dominantBaseline="central"
-                        fill="#fff"
-                        fontSize={Math.min(10, b.w * scale * 0.15)}
-                        fontWeight={600}
-                      >
-                        {b.produtoCode.length > 12 ? b.produtoCode.slice(0, 10) + '..' : b.produtoCode}
-                      </text>
-                    )}
-                  </g>
-                ))}
-              </svg>
+                        <rect
+                          x={svgPad + b.x * scale}
+                          y={svgPad + b.y * scale}
+                          width={b.w * scale}
+                          height={b.h * scale}
+                          fill={b.color + (isHovered ? '88' : '33')}
+                          stroke={b.color}
+                          strokeWidth={isHovered ? 2.5 : 1.5}
+                          rx={3}
+                        />
+                        {/* Fragile indicator */}
+                        {b.fragil && (
+                          <text
+                            x={svgPad + b.x * scale + 4}
+                            y={svgPad + b.y * scale + 13}
+                            fill="#dc2626"
+                            fontSize={11}
+                            fontWeight={800}
+                          >
+                            ⚠
+                          </text>
+                        )}
+                        {/* Product code label */}
+                        {b.w * scale > 35 && b.h * scale > 18 && (
+                          <text
+                            x={svgPad + (b.x + b.w / 2) * scale}
+                            y={svgPad + (b.y + b.h / 2) * scale}
+                            textAnchor="middle"
+                            dominantBaseline="central"
+                            fill={b.color}
+                            fontSize={Math.max(8, Math.min(11, b.w * scale * 0.12))}
+                            fontWeight={700}
+                          >
+                            {b.label}
+                          </text>
+                        )}
+                        {/* Dimensions inside box if big enough */}
+                        {b.w * scale > 50 && b.h * scale > 30 && (
+                          <text
+                            x={svgPad + (b.x + b.w / 2) * scale}
+                            y={svgPad + (b.y + b.h / 2) * scale + 12}
+                            textAnchor="middle"
+                            dominantBaseline="central"
+                            fill="#94a3b8"
+                            fontSize={8}
+                          >
+                            {b.w}×{b.h}cm
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })}
+                </svg>
+              </div>
+
+              {/* Hover tooltip */}
+              {hoveredIdx !== null && placedBoxes[hoveredIdx] && (
+                <div style={{ marginTop: 8, padding: '8px 12px', background: '#f0fdf0', borderRadius: 8, border: '1px solid #bbf7d0', fontSize: 12, color: '#334155' }}>
+                  <b>{placedBoxes[hoveredIdx].produtoCode}</b> — {placedBoxes[hoveredIdx].produtoDescricao}
+                  {' | '}
+                  {placedBoxes[hoveredIdx].w}×{placedBoxes[hoveredIdx].h} cm
+                  {placedBoxes[hoveredIdx].volumeM3Unit ? ` | ${placedBoxes[hoveredIdx].volumeM3Unit!.toFixed(4)} m³` : ''}
+                  {placedBoxes[hoveredIdx].fragil ? ' | FRÁGIL' : ''}
+                  {placedBoxes[hoveredIdx].posicao === 'FRONTAL' ? ' | FRONTAL' : ''}
+                </div>
+              )}
             </div>
           ) : (
-            <div style={{ padding: 20, opacity: 0.6 }}>Nenhum item de carga encontrado para este planejamento.</div>
+            <div style={{ padding: 24, color: '#94a3b8', background: '#ffffff', borderRadius: 12, border: '1px solid #e2e8f0', textAlign: 'center' }}>
+              Nenhum item de carga encontrado para este planejamento.
+            </div>
           )}
 
           {/* Legend by coleta */}
           {boxes.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 900, color: '#1A4A1A', marginBottom: 8 }}>Legenda (por NF/Coleta)</h3>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ marginBottom: 20, background: '#ffffff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '14px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1A4A1A', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Legenda (por NF/Coleta)</h3>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 {(() => {
                   const seen = new Map<string, { nf: string; color: string }>();
                   for (const b of placedBoxes) {
@@ -307,8 +437,8 @@ export default function CargaLayoutPage() {
                   }
                   return Array.from(seen.entries()).map(([cId, { nf, color }]) => (
                     <div key={cId} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-                      <div style={{ width: 16, height: 16, background: color + '66', border: `2px solid ${color}`, borderRadius: 3 }} />
-                      <span>NF {nf}</span>
+                      <div style={{ width: 18, height: 18, background: color + '44', border: `2px solid ${color}`, borderRadius: 4 }} />
+                      <span style={{ fontWeight: 600 }}>NF {nf}</span>
                     </div>
                   ));
                 })()}
@@ -318,48 +448,50 @@ export default function CargaLayoutPage() {
 
           {/* Items table */}
           {boxes.length > 0 && (
-            <div>
-              <h3 style={{ fontSize: 15, fontWeight: 900, color: '#1A4A1A', marginBottom: 8 }}>Detalhamento de itens</h3>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr>
-                    <th style={th}>NF</th>
-                    <th style={th}>Código</th>
-                    <th style={th}>Descrição</th>
-                    <th style={th}>Qtd</th>
-                    <th style={th}>Dimensões (cm)</th>
-                    <th style={th}>Vol. (m³)</th>
-                    <th style={th}>Flags</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {boxes.map((b) => (
-                    <tr key={b.itemId}>
-                      <td style={td}>{b.coletaNF || '-'}</td>
-                      <td style={td}>{b.produtoCode}</td>
-                      <td style={td}>{b.produtoDescricao}</td>
-                      <td style={{ ...td, textAlign: 'right' }}>{b.quantidade}</td>
-                      <td style={{ ...td, textAlign: 'right' }}>
-                        {b.alturaCm ?? '?'}×{b.larguraCm ?? '?'}×{b.comprimentoCm ?? '?'}
-                      </td>
-                      <td style={{ ...td, textAlign: 'right' }}>
-                        {b.volumeM3Total != null ? b.volumeM3Total.toFixed(4) : '-'}
-                      </td>
-                      <td style={td}>
-                        {[
-                          b.fragil && 'Frágil',
-                          !b.empilhavel && 'Não empilhável',
-                          b.posicao === 'FRONTAL' && 'Frontal',
-                          b.desmontavel && 'Desmontável',
-                          b.tipoEmbalagem && b.tipoEmbalagem,
-                        ]
-                          .filter(Boolean)
-                          .join(', ') || '-'}
-                      </td>
+            <div style={{ background: '#ffffff', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1A4A1A', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Detalhamento de Itens</h3>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={th}>NF</th>
+                      <th style={th}>Código</th>
+                      <th style={th}>Descrição</th>
+                      <th style={{ ...th, textAlign: 'center' }}>Qtd</th>
+                      <th style={{ ...th, textAlign: 'right' }}>Dimensões (cm)</th>
+                      <th style={{ ...th, textAlign: 'right' }}>Vol. (m³)</th>
+                      <th style={th}>Flags</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {boxes.map((b, i) => (
+                      <tr key={b.itemId} style={{ background: i % 2 === 0 ? '#ffffff' : '#f8fafb' }}>
+                        <td style={{ ...td, fontWeight: 600 }}>{b.coletaNF || '-'}</td>
+                        <td style={{ ...td, fontFamily: 'monospace', fontSize: 12 }}>{b.produtoCode}</td>
+                        <td style={td}>{b.produtoDescricao}</td>
+                        <td style={{ ...td, textAlign: 'center', fontWeight: 700 }}>{b.quantidade}</td>
+                        <td style={{ ...td, textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>
+                          {b.alturaCm ?? '?'} × {b.larguraCm ?? '?'} × {b.comprimentoCm ?? '?'}
+                        </td>
+                        <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>
+                          {b.volumeM3Total != null ? b.volumeM3Total.toFixed(4) : '-'}
+                        </td>
+                        <td style={td}>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            {b.fragil && <span style={{ background: '#fef2f2', color: '#dc2626', padding: '2px 6px', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>Frágil</span>}
+                            {!b.empilhavel && <span style={{ background: '#fef9c3', color: '#92400e', padding: '2px 6px', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>Não empilhável</span>}
+                            {b.posicao === 'FRONTAL' && <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 6px', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>Frontal</span>}
+                            {b.desmontavel && <span style={{ background: '#f0fdf4', color: '#16a34a', padding: '2px 6px', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>Desmontável</span>}
+                            {b.tipoEmbalagem && <span style={{ background: '#f5f3ff', color: '#7c3aed', padding: '2px 6px', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>{b.tipoEmbalagem}</span>}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </>
