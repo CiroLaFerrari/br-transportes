@@ -336,31 +336,59 @@ export default function CarregamentoChecklistPage() {
     setScanInput('');
   }
 
+  // ── Brand colours ──────────────────────────────
+  const GREEN  = '#1A4A1A';
+  const GOLD   = '#F5BE16';
+  const LIGHT  = '#f0fdf4';   // very light green tint
+  const BORDER = '#d1fae5';   // light green border
+
   const card: React.CSSProperties = {
     background: '#ffffff',
-    border: '1px solid #e2e8f0',
+    border: `1px solid ${BORDER}`,
     borderRadius: 12,
-    padding: 12,
-    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+    padding: 14,
+    boxShadow: '0 1px 4px rgba(26,74,26,0.08)',
   };
 
   const btn: React.CSSProperties = {
-    padding: '8px 12px',
+    padding: '8px 14px',
     borderRadius: 8,
     border: 0,
     cursor: 'pointer',
-    fontWeight: 800,
+    fontWeight: 700,
+    fontSize: 13,
   };
 
   const miniBtn: React.CSSProperties = {
-    padding: '6px 10px',
+    padding: '5px 11px',
     borderRadius: 999,
-    border: '1px solid #d1d5db',
-    background: '#f1f5f9',
-    color: '#1e293b',
+    border: 'none',
+    background: '#e2e8f0',
+    color: '#334155',
     cursor: 'pointer',
-    fontWeight: 900,
+    fontWeight: 700,
     fontSize: 12,
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.4px',
+  };
+
+  const thStyle: React.CSSProperties = {
+    textAlign: 'left',
+    padding: '10px 12px',
+    background: GREEN,
+    color: '#ffffff',
+    fontWeight: 700,
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    borderBottom: `2px solid ${GOLD}`,
+    whiteSpace: 'nowrap',
   };
 
   if (!minutaId) {
@@ -375,26 +403,31 @@ export default function CarregamentoChecklistPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1200, margin: '20px auto', padding: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+    <div style={{ maxWidth: 1200, margin: '20px auto', padding: '20px 16px', background: '#f8fafc', minHeight: '100vh' }}>
+      {/* Page header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
         <div>
-          <h1 style={{ fontSize: 22, margin: 0 }}>Checklist de Carregamento</h1>
-          <div style={{ marginTop: 4, color: '#64748b', fontSize: 13 }}>
-            MinutaId: <code>{minutaId}</code>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+            <Link href="/minutas" style={{ color: GREEN, textDecoration: 'none', fontWeight: 600, fontSize: 13 }}>
+              ← Minutas
+            </Link>
+          </div>
+          <h1 style={{ fontSize: 22, margin: 0, fontWeight: 900, color: GREEN }}>
+            Checklist de Carregamento
+          </h1>
+          <div style={{ marginTop: 2, color: '#94a3b8', fontSize: 12 }}>
+            Minuta: <code style={{ background: LIGHT, padding: '1px 6px', borderRadius: 4, color: GREEN, fontWeight: 700 }}>{minutaId}</code>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Link href="/minutas" style={{ ...btn, background: '#f1f5f9', color: '#fff', textDecoration: 'none' }}>
-            Voltar (Minutas)
-          </Link>
-
-          <button onClick={abrirEtiquetasHTML} style={{ ...btn, background: '#0ea5e9', color: '#1e293b' }}>
-            Imprimir etiquetas
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button onClick={abrirEtiquetasHTML}
+            style={{ ...btn, background: GREEN, color: GOLD, border: `1px solid ${GREEN}` }}>
+            🖨 Imprimir etiquetas
           </button>
-
-          <button onClick={baixarCsv} style={{ ...btn, background: '#22c55e', color: '#1e293b' }}>
-            Baixar CSV
+          <button onClick={baixarCsv}
+            style={{ ...btn, background: '#fff', color: GREEN, border: `1px solid ${BORDER}` }}>
+            ⬇ Baixar CSV
           </button>
         </div>
       </div>
@@ -417,61 +450,64 @@ export default function CarregamentoChecklistPage() {
 
       {minuta && (
         <>
-          <div style={{ ...card, marginTop: 12 }}>
-            <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontSize: 12, color: '#64748b' }}>NF</div>
-                <div style={{ fontWeight: 900, color: '#1e293b' }}>{minuta.nfNumero}</div>
-              </div>
+          {/* Info card */}
+          <div style={{ ...card, marginTop: 14 }}>
+            {/* NF / Cliente / etc. */}
+            <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start',
+              paddingBottom: 12, borderBottom: `1px solid ${BORDER}` }}>
+              {[
+                { label: 'NF', value: minuta.nfNumero },
+                { label: 'Cliente', value: minuta.cliente },
+                { label: 'Cidade / UF', value: `${minuta.cidade} / ${minuta.uf}` },
+                { label: 'Motorista', value: minuta.motorista ?? '—' },
+                { label: 'Data coleta', value: fmtDate(minuta.dataColeta) },
+              ].map(({ label, value }) => (
+                <div key={label}>
+                  <div style={labelStyle}>{label}</div>
+                  <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 14, marginTop: 1 }}>{value}</div>
+                </div>
+              ))}
+            </div>
 
-              <div>
-                <div style={{ fontSize: 12, color: '#64748b' }}>Cliente</div>
-                <div style={{ fontWeight: 900, color: '#1e293b' }}>{minuta.cliente}</div>
-              </div>
-
-              <div>
-                <div style={{ fontSize: 12, color: '#64748b' }}>Cidade/UF</div>
-                <div style={{ fontWeight: 900, color: '#1e293b' }}>
-                  {minuta.cidade}/{minuta.uf}
+            {/* Stats + bulk actions */}
+            <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              {/* Progress bar */}
+              <div style={{ flex: '1 1 200px', minWidth: 200 }}>
+                <div style={{ height: 8, background: '#e2e8f0', borderRadius: 999, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${stats.pct}%`,
+                    background: stats.pct === 100 ? GREEN : stats.pct > 50 ? '#16a34a' : GOLD,
+                    borderRadius: 999, transition: 'width 0.4s ease' }} />
+                </div>
+                <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
+                  {stats.ok} / {stats.total} conferidos — {stats.pct}%
                 </div>
               </div>
 
-              <div>
-                <div style={{ fontSize: 12, color: '#64748b' }}>Motorista</div>
-                <div style={{ fontWeight: 900, color: '#1e293b' }}>{minuta.motorista ?? '—'}</div>
-              </div>
-
-              <div>
-                <div style={{ fontSize: 12, color: '#64748b' }}>Data coleta</div>
-                <div style={{ fontWeight: 900, color: '#1e293b' }}>{fmtDate(minuta.dataColeta)}</div>
-              </div>
-            </div>
-
-            <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ padding: '2px 10px', borderRadius: 999, background: '#e2e8f0', color: '#0f172a', fontWeight: 900, fontSize: 12 }}>
+              <span style={{ padding: '3px 10px', borderRadius: 999, background: LIGHT, color: GREEN, fontWeight: 700, fontSize: 12, border: `1px solid ${BORDER}` }}>
                 Total: {stats.total}
               </span>
-              <span style={{ padding: '2px 10px', borderRadius: 999, background: '#dcfce7', color: '#166534', fontWeight: 900, fontSize: 12 }}>
-                Conferidos: {stats.ok}
+              <span style={{ padding: '3px 10px', borderRadius: 999, background: '#dcfce7', color: '#166534', fontWeight: 700, fontSize: 12 }}>
+                ✓ {stats.ok}
               </span>
-              <span style={{ padding: '2px 10px', borderRadius: 999, background: '#fee2e2', color: '#991b1b', fontWeight: 900, fontSize: 12 }}>
-                Falha: {stats.falha}
-              </span>
-              <span style={{ padding: '2px 10px', borderRadius: 999, background: '#fef3c7', color: '#92400e', fontWeight: 900, fontSize: 12 }}>
-                Pendentes: {stats.pend}
-              </span>
-              <span style={{ padding: '2px 10px', borderRadius: 999, background: '#fef3c7', color: '#92400e', fontWeight: 900, fontSize: 12 }}>
-                {stats.pct}%
-              </span>
+              {stats.falha > 0 && (
+                <span style={{ padding: '3px 10px', borderRadius: 999, background: '#fee2e2', color: '#991b1b', fontWeight: 700, fontSize: 12 }}>
+                  ✗ {stats.falha}
+                </span>
+              )}
+              {stats.pend > 0 && (
+                <span style={{ padding: '3px 10px', borderRadius: 999, background: '#fef9c3', color: '#92400e', fontWeight: 700, fontSize: 12 }}>
+                  ○ {stats.pend} pendentes
+                </span>
+              )}
 
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button onClick={() => void marcarTodos(true)} disabled={isLocked}
-                  style={{ ...btn, background: '#10b981', color: '#1e293b', opacity: isLocked ? 0.4 : 1 }}>
-                  Marcar todos
+                  style={{ ...btn, background: GREEN, color: '#fff', opacity: isLocked ? 0.35 : 1 }}>
+                  ✓ Marcar todos
                 </button>
                 <button onClick={() => void marcarTodos(false)} disabled={isLocked}
-                  style={{ ...btn, background: '#ef4444', color: '#fff', opacity: isLocked ? 0.4 : 1 }}>
-                  Desmarcar todos
+                  style={{ ...btn, background: '#fff', color: '#dc2626', border: '1px solid #fecaca', opacity: isLocked ? 0.35 : 1 }}>
+                  ✕ Desmarcar
                 </button>
               </div>
             </div>
@@ -530,134 +566,111 @@ export default function CarregamentoChecklistPage() {
           </div>
 
           {/* Scanner de etiquetas */}
-          <div style={{ ...card, marginTop: 12, background: isLocked ? '#f1f5f9' : '#f0fdf4',
-            border: `2px solid ${isLocked ? '#cbd5e1' : '#22c55e'}`, opacity: isLocked ? 0.6 : 1 }}>
+          <div style={{ ...card, marginTop: 12,
+            background: isLocked ? '#f8fafc' : LIGHT,
+            border: `2px solid ${isLocked ? '#cbd5e1' : GREEN}`,
+            opacity: isLocked ? 0.55 : 1 }}>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ fontWeight: 900, color: '#22c55e', fontSize: 14 }}>Leitura de Etiqueta (Scanner / QR)</div>
+              <div style={{ fontWeight: 800, color: GREEN, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                📷 Leitura de Etiqueta (Scanner / QR)
+              </div>
               <input
                 value={scanInput}
                 onChange={(e) => setScanInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleScan(scanInput);
-                  }
-                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleScan(scanInput); } }}
                 placeholder="Escaneie ou digite a etiqueta e pressione Enter"
                 autoFocus={!isLocked}
                 disabled={isLocked}
-                style={{
-                  flex: 1,
-                  minWidth: 280,
-                  padding: 12,
-                  borderRadius: 8,
-                  border: '2px solid #22c55e',
-                  background: '#ffffff',
-                  color: '#1e293b',
-                  fontSize: 16,
-                  fontFamily: 'ui-monospace, monospace',
-                }}
+                style={{ flex: 1, minWidth: 260, padding: '10px 14px', borderRadius: 8,
+                  border: `2px solid ${GREEN}`, background: '#fff', color: '#1e293b',
+                  fontSize: 15, fontFamily: 'ui-monospace, monospace', outline: 'none' }}
               />
-              <button
-                onClick={() => handleScan(scanInput)}
-                style={{ ...btn, background: '#22c55e', color: '#1e293b', padding: '12px 16px', fontSize: 14 }}
-              >
+              <button onClick={() => handleScan(scanInput)} disabled={isLocked}
+                style={{ ...btn, background: GREEN, color: GOLD, padding: '10px 18px', fontSize: 14 }}>
                 Conferir
               </button>
-              <a
-                href={`/scan?minutaId=${encodeURIComponent(minutaId)}`}
-                target="_blank"
-                rel="noopener"
-                style={{ ...btn, background: '#6366f1', color: '#fff', textDecoration: 'none', padding: '12px 16px', fontSize: 14 }}
-              >
+              <a href={`/scan?minutaId=${encodeURIComponent(minutaId)}`} target="_blank" rel="noopener"
+                style={{ ...btn, background: '#fff', color: GREEN, border: `1px solid ${BORDER}`,
+                  textDecoration: 'none', padding: '10px 16px', fontSize: 13 }}>
                 Abrir câmera QR
               </a>
             </div>
             {scanMsg && (
-              <div style={{ marginTop: 8, fontSize: 13, fontWeight: 700, color: scanMsg.includes('OK') || scanMsg.includes('conferida') ? '#22c55e' : '#f59e0b' }}>
+              <div style={{ marginTop: 8, fontSize: 13, fontWeight: 700,
+                color: scanMsg.includes('OK') || scanMsg.includes('conferida') ? GREEN : '#d97706' }}>
                 {scanMsg}
               </div>
             )}
           </div>
 
           <div style={{ ...card, marginTop: 12 }}>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* Search / filter bar */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Buscar por etiqueta, código, descrição…"
-                style={{
-                  flex: 1,
-                  minWidth: 260,
-                  padding: 10,
-                  borderRadius: 8,
-                  border: '1px solid #e2e8f0',
-                  background: '#ffffff',
-                  color: '#1e293b',
-                }}
+                style={{ flex: 1, minWidth: 240, padding: '9px 12px', borderRadius: 8,
+                  border: `1px solid ${BORDER}`, background: '#fff', color: '#1e293b',
+                  fontSize: 13, outline: 'none' }}
               />
-
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value as any)}
-                style={{
-                  padding: 10,
-                  borderRadius: 8,
-                  border: '1px solid #e2e8f0',
-                  background: '#ffffff',
-                  color: '#1e293b',
-                  fontWeight: 800,
-                }}
-              >
+              <select value={filter} onChange={(e) => setFilter(e.target.value as any)}
+                style={{ padding: '9px 12px', borderRadius: 8, border: `1px solid ${BORDER}`,
+                  background: '#fff', color: GREEN, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
                 <option value="TODOS">Todos</option>
                 <option value="PENDENTES">Pendentes</option>
                 <option value="CONFERIDOS">Conferidos</option>
                 <option value="FALHA">Falha</option>
               </select>
-
-              <button onClick={() => { void loadMinuta(); void loadChecklist(); }} style={{ ...btn, background: '#0ea5e9', color: '#1e293b' }}>
-                Recarregar
+              <button onClick={() => { void loadMinuta(); void loadChecklist(); }}
+                style={{ ...btn, background: '#fff', color: GREEN, border: `1px solid ${BORDER}` }}>
+                ↺ Recarregar
               </button>
             </div>
 
-            <div style={{ marginTop: 12, overflowX: 'auto' }}>
+            <div style={{ marginTop: 12, overflowX: 'auto', borderRadius: 8, overflow: 'hidden', border: `1px solid ${BORDER}` }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr style={{ background: '#0b1220', color: '#64748b' }}>
-                    <th style={{ textAlign: 'left', padding: 10, borderBottom: '1px solid #e2e8f0', width: 70 }}>OK</th>
-                    <th style={{ textAlign: 'left', padding: 10, borderBottom: '1px solid #e2e8f0' }}>Etiqueta</th>
-                    <th style={{ textAlign: 'left', padding: 10, borderBottom: '1px solid #e2e8f0' }}>Tipo</th>
-                    <th style={{ textAlign: 'left', padding: 10, borderBottom: '1px solid #e2e8f0' }}>Código</th>
-                    <th style={{ textAlign: 'left', padding: 10, borderBottom: '1px solid #e2e8f0' }}>Descrição</th>
-                    <th style={{ textAlign: 'left', padding: 10, borderBottom: '1px solid #e2e8f0' }}>Dimensões (cm)</th>
-                    <th style={{ textAlign: 'left', padding: 10, borderBottom: '1px solid #e2e8f0' }}>Volume (m³)</th>
-                    <th style={{ textAlign: 'left', padding: 10, borderBottom: '1px solid #e2e8f0' }}>Ação</th>
+                  <tr>
+                    <th style={{ ...thStyle, width: 52 }}>OK</th>
+                    <th style={thStyle}>Etiqueta</th>
+                    <th style={thStyle}>Tipo</th>
+                    <th style={thStyle}>Código</th>
+                    <th style={thStyle}>Descrição</th>
+                    <th style={thStyle}>Dimensões (cm)</th>
+                    <th style={thStyle}>Vol. (m³)</th>
+                    <th style={thStyle}>Ação</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((v) => {
+                  {filtered.map((v, rowIdx) => {
                     const st = statusMap[v.id] || 'PENDENTE';
                     const checked = st === 'OK';
 
                     return (
-                      <tr key={v.id} style={{ background: '#ffffff', color: '#1e293b' }}>
-                        <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
+                      <tr key={v.id} style={{ background: rowIdx % 2 === 0 ? '#ffffff' : LIGHT, color: '#1e293b' }}>
+                        <td style={{ padding: '10px 12px', borderBottom: `1px solid ${BORDER}`, textAlign: 'center' }}>
                           <input type="checkbox" checked={checked}
                             onChange={() => !isLocked && toggle(v.id)}
                             disabled={isLocked}
-                            style={{ cursor: isLocked ? 'not-allowed' : 'pointer', accentColor: '#1A4A1A' }} />
+                            style={{ cursor: isLocked ? 'not-allowed' : 'pointer', accentColor: GREEN, width: 16, height: 16 }} />
                         </td>
-                        <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
-                          <code>{v.etiqueta}</code>
+                        <td style={{ padding: '10px 12px', borderBottom: `1px solid ${BORDER}` }}>
+                          <code style={{ background: LIGHT, color: GREEN, padding: '2px 7px', borderRadius: 5,
+                            fontSize: 11, fontWeight: 700, letterSpacing: '0.3px' }}>{v.etiqueta}</code>
                         </td>
-                        <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>{v.tipo}</td>
-                        <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>{v.codigo}</td>
-                        <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>{v.descricao}</td>
-                        <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
-                          <span style={{ fontFamily: 'ui-monospace, monospace' }}>{fmtDim(v.alturaCm ?? null, v.larguraCm ?? null, v.comprimentoCm ?? null)}</span>
+                        <td style={{ padding: '10px 12px', borderBottom: `1px solid ${BORDER}`, color: '#475569', fontSize: 13 }}>{v.tipo}</td>
+                        <td style={{ padding: '10px 12px', borderBottom: `1px solid ${BORDER}`, fontFamily: 'monospace', fontSize: 12, color: '#334155' }}>{v.codigo}</td>
+                        <td style={{ padding: '10px 12px', borderBottom: `1px solid ${BORDER}`, color: '#1e293b', fontSize: 13 }}>{v.descricao}</td>
+                        <td style={{ padding: '10px 12px', borderBottom: `1px solid ${BORDER}` }}>
+                          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, color: '#475569' }}>
+                            {fmtDim(v.alturaCm ?? null, v.larguraCm ?? null, v.comprimentoCm ?? null)}
+                          </span>
                         </td>
-                        <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>{v.volumeM3 != null ? Number(v.volumeM3).toFixed(4) : '—'}</td>
-                        <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
+                        <td style={{ padding: '10px 12px', borderBottom: `1px solid ${BORDER}`, fontFamily: 'monospace', fontSize: 12, color: '#475569' }}>
+                          {v.volumeM3 != null ? Number(v.volumeM3).toFixed(4) : '—'}
+                        </td>
+                        <td style={{ padding: '10px 12px', borderBottom: `1px solid ${BORDER}` }}>
                           {isLocked ? (
                             <span style={{
                               padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700,
@@ -695,8 +708,8 @@ export default function CarregamentoChecklistPage() {
 
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={8} style={{ padding: 14, color: '#64748b' }}>
-                        (Nada para mostrar com esse filtro)
+                      <td colSpan={8} style={{ padding: 20, color: '#94a3b8', textAlign: 'center', fontStyle: 'italic' }}>
+                        Nenhum item encontrado com esse filtro.
                       </td>
                     </tr>
                   )}
