@@ -60,6 +60,59 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
   }
 }
 
+export async function PATCH(req: NextRequest, ctx: RouteContext) {
+  try {
+    const { id } = await ctx.params;
+    const minutaId = String(id || '').trim();
+    if (!minutaId) return json({ ok: false, error: 'minutaId ausente' }, 400);
+
+    const body = await req.json().catch(() => ({} as any));
+    const action = String(body?.action || '').trim(); // 'finalizar' | 'reabrir'
+
+    if (action === 'finalizar') {
+      const conferente = String(body?.conferente || '').trim() || null;
+
+      // Garante que o checklist existe antes de finalizar
+      let existing = await prisma.carregamentoChecklist.findUnique({
+        where: { minutaId },
+        select: { id: true, status: true },
+      });
+      if (!existing) {
+        existing = await prisma.carregamentoChecklist.create({
+          data: { minutaId },
+          select: { id: true, status: true },
+        });
+      }
+
+      const updated = await prisma.carregamentoChecklist.update({
+        where: { minutaId },
+        data: {
+          status: 'FINALIZADO',
+          finishedAt: new Date(),
+          ...(conferente ? { conferente } : {}),
+        },
+        select: { id: true, minutaId: true, status: true, finishedAt: true, conferente: true },
+      });
+
+      return json({ ok: true, checklist: updated });
+    }
+
+    if (action === 'reabrir') {
+      const updated = await prisma.carregamentoChecklist.update({
+        where: { minutaId },
+        data: { status: 'ABERTO', finishedAt: null },
+        select: { id: true, minutaId: true, status: true, finishedAt: true, conferente: true },
+      });
+      return json({ ok: true, checklist: updated });
+    }
+
+    return json({ ok: false, error: 'Ação inválida. Use "finalizar" ou "reabrir".' }, 400);
+  } catch (e: any) {
+    console.error('PATCH /api/minutas/[id]/checklist error:', e);
+    return json({ ok: false, error: e?.message || 'Erro interno' }, 500);
+  }
+}
+
 export async function POST(req: NextRequest, ctx: RouteContext) {
   try {
     const { id } = await ctx.params;

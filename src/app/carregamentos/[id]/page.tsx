@@ -94,6 +94,7 @@ export default function CarregamentoChecklistPage() {
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const [minuta, setMinuta] = useState<Minuta | null>(null);
 
@@ -101,6 +102,15 @@ export default function CarregamentoChecklistPage() {
   const [statusMap, setStatusMap] = useState<Record<string, ItemStatus>>({});
   const [filter, setFilter] = useState<StatusFilter>('TODOS');
   const [q, setQ] = useState('');
+
+  // Checklist lock state
+  const [checklistStatus, setChecklistStatus] = useState<'ABERTO' | 'FINALIZADO' | null>(null);
+  const [checklistFinishedAt, setChecklistFinishedAt] = useState<string | null>(null);
+  const [checklistConferente, setChecklistConferente] = useState<string | null>(null);
+  const [conferenteInput, setConferenteInput] = useState('');
+  const [finalizando, setFinalizando] = useState(false);
+
+  const isLocked = checklistStatus === 'FINALIZADO';
 
   async function loadMinuta() {
     if (!minutaId) return;
@@ -141,6 +151,15 @@ export default function CarregamentoChecklistPage() {
         if (it?.volumeId) map[String(it.volumeId)] = it.status || 'OK';
       }
       setStatusMap(map);
+
+      // Sync checklist lock state
+      if (j.checklist) {
+        setChecklistStatus(j.checklist.status || 'ABERTO');
+        setChecklistFinishedAt(j.checklist.finishedAt || null);
+        setChecklistConferente(j.checklist.conferente || null);
+      } else {
+        setChecklistStatus('ABERTO');
+      }
     } catch (e: any) {
       // não trava a página se o checklist falhar
       console.warn('Checklist load error:', e?.message || e);
@@ -196,6 +215,11 @@ export default function CarregamentoChecklistPage() {
   }, [volumes, statusMap, filter, q]);
 
   async function setStatus(volumeId: string, st: ItemStatus) {
+    if (isLocked) {
+      setErr('Checklist finalizado. Peça ao administrador para reabrir antes de editar.');
+      return;
+    }
+
     // otimista na UI
     setStatusMap((prev) => ({ ...prev, [volumeId]: st }));
 
@@ -215,6 +239,50 @@ export default function CarregamentoChecklistPage() {
         return n;
       });
       setErr(e?.message || 'Falha ao salvar checklist');
+    }
+  }
+
+  async function finalizarChecklist() {
+    if (!confirm(`Finalizar checklist? Após finalizado, ninguém poderá alterar as marcações (exceto o administrador).`)) return;
+    setFinalizando(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/minutas/${encodeURIComponent(minutaId)}/checklist`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'finalizar', conferente: conferenteInput.trim() || null }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.ok) throw new Error(j?.error || 'Falha ao finalizar checklist');
+      setChecklistStatus('FINALIZADO');
+      setChecklistFinishedAt(j.checklist?.finishedAt || new Date().toISOString());
+      setChecklistConferente(j.checklist?.conferente || conferenteInput.trim() || null);
+      setSuccessMsg('Checklist finalizado com sucesso! Marcações bloqueadas.');
+      setTimeout(() => setSuccessMsg(null), 5000);
+    } catch (e: any) {
+      setErr(e?.message || 'Falha ao finalizar checklist');
+    } finally {
+      setFinalizando(false);
+    }
+  }
+
+  async function reabrirChecklist() {
+    if (!confirm('Reabrir checklist? As marcações voltarão a ser editáveis.')) return;
+    setErr(null);
+    try {
+      const res = await fetch(`/api/minutas/${encodeURIComponent(minutaId)}/checklist`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reabrir' }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.ok) throw new Error(j?.error || 'Falha ao reabrir checklist');
+      setChecklistStatus('ABERTO');
+      setChecklistFinishedAt(null);
+      setSuccessMsg('Checklist reaberto. Pode editar novamente.');
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (e: any) {
+      setErr(e?.message || 'Falha ao reabrir checklist');
     }
   }
 
@@ -331,7 +399,20 @@ export default function CarregamentoChecklistPage() {
         </div>
       </div>
 
-      {err && <div style={{ marginTop: 10, color: '#b91c1c', fontWeight: 800 }}>{err}</div>}
+      {err && (
+        <div style={{ marginTop: 10, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca',
+          borderRadius: 8, color: '#b91c1c', fontWeight: 700, fontSize: 13 }}>
+          {err}
+          <button onClick={() => setErr(null)} style={{ marginLeft: 12, background: 'none', border: 'none',
+            cursor: 'pointer', color: '#b91c1c', fontWeight: 900, fontSize: 14 }}>✕</button>
+        </div>
+      )}
+      {successMsg && (
+        <div style={{ marginTop: 10, padding: '10px 14px', background: '#f0fdf4', border: '1px solid #86efac',
+          borderRadius: 8, color: '#166534', fontWeight: 700, fontSize: 13 }}>
+          ✅ {successMsg}
+        </div>
+      )}
       {loading && <div style={{ marginTop: 10 }}>Carregando…</div>}
 
       {minuta && (
@@ -384,18 +465,73 @@ export default function CarregamentoChecklistPage() {
               </span>
 
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button onClick={() => void marcarTodos(true)} style={{ ...btn, background: '#10b981', color: '#1e293b' }}>
+                <button onClick={() => void marcarTodos(true)} disabled={isLocked}
+                  style={{ ...btn, background: '#10b981', color: '#1e293b', opacity: isLocked ? 0.4 : 1 }}>
                   Marcar todos
                 </button>
-                <button onClick={() => void marcarTodos(false)} style={{ ...btn, background: '#ef4444', color: '#fff' }}>
+                <button onClick={() => void marcarTodos(false)} disabled={isLocked}
+                  style={{ ...btn, background: '#ef4444', color: '#fff', opacity: isLocked ? 0.4 : 1 }}>
                   Desmarcar todos
                 </button>
               </div>
             </div>
+
+            {/* ── Finalizar / Locked Banner ───────────────────────── */}
+            {isLocked ? (
+              <div style={{ marginTop: 14, padding: '12px 16px',
+                background: 'linear-gradient(135deg, #052e16 0%, #14532d 100%)',
+                borderRadius: 10, display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 22 }}>🔒</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 900, color: '#86efac', fontSize: 15 }}>Checklist Finalizado</div>
+                  <div style={{ fontSize: 12, color: '#4ade80', marginTop: 2 }}>
+                    {checklistConferente && <>Conferido por: <b>{checklistConferente}</b> · </>}
+                    {checklistFinishedAt && <>Em: <b>{fmtDate(checklistFinishedAt)}</b></>}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#86efac', marginTop: 2, opacity: 0.8 }}>
+                    Marcações bloqueadas. Somente o administrador pode reabrir.
+                  </div>
+                </div>
+                <button onClick={() => void reabrirChecklist()}
+                  style={{ ...btn, background: 'rgba(255,255,255,0.12)', color: '#fbbf24',
+                    border: '1px solid rgba(251,191,36,0.4)', fontSize: 13 }}>
+                  🔓 Reabrir (Admin)
+                </button>
+              </div>
+            ) : (
+              <div style={{ marginTop: 14, padding: '12px 16px',
+                background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0',
+                display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 13, color: '#475569', fontWeight: 600 }}>
+                    Conferido por:
+                  </div>
+                  <input
+                    value={conferenteInput}
+                    onChange={(e) => setConferenteInput(e.target.value)}
+                    placeholder="Seu nome (opcional)"
+                    style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1',
+                      background: '#fff', color: '#1e293b', fontSize: 13, width: 200 }}
+                  />
+                </div>
+                <button
+                  onClick={() => void finalizarChecklist()}
+                  disabled={finalizando}
+                  style={{ ...btn, background: '#1A4A1A', color: '#F5BE16',
+                    fontSize: 14, padding: '10px 20px', opacity: finalizando ? 0.7 : 1,
+                    boxShadow: '0 2px 8px rgba(26,74,26,0.3)' }}>
+                  {finalizando ? 'Salvando…' : '🔒 Finalizar e Salvar Checklist'}
+                </button>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                  Após finalizar, ninguém pode alterar as marcações.
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Scanner de etiquetas */}
-          <div style={{ ...card, marginTop: 12, background: '#f0fdf4', border: '2px solid #22c55e' }}>
+          <div style={{ ...card, marginTop: 12, background: isLocked ? '#f1f5f9' : '#f0fdf4',
+            border: `2px solid ${isLocked ? '#cbd5e1' : '#22c55e'}`, opacity: isLocked ? 0.6 : 1 }}>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <div style={{ fontWeight: 900, color: '#22c55e', fontSize: 14 }}>Leitura de Etiqueta (Scanner / QR)</div>
               <input
@@ -408,7 +544,8 @@ export default function CarregamentoChecklistPage() {
                   }
                 }}
                 placeholder="Escaneie ou digite a etiqueta e pressione Enter"
-                autoFocus
+                autoFocus={!isLocked}
+                disabled={isLocked}
                 style={{
                   flex: 1,
                   minWidth: 280,
@@ -505,7 +642,10 @@ export default function CarregamentoChecklistPage() {
                     return (
                       <tr key={v.id} style={{ background: '#ffffff', color: '#1e293b' }}>
                         <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
-                          <input type="checkbox" checked={checked} onChange={() => toggle(v.id)} />
+                          <input type="checkbox" checked={checked}
+                            onChange={() => !isLocked && toggle(v.id)}
+                            disabled={isLocked}
+                            style={{ cursor: isLocked ? 'not-allowed' : 'pointer', accentColor: '#1A4A1A' }} />
                         </td>
                         <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
                           <code>{v.etiqueta}</code>
@@ -518,46 +658,36 @@ export default function CarregamentoChecklistPage() {
                         </td>
                         <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>{v.volumeM3 != null ? Number(v.volumeM3).toFixed(4) : '—'}</td>
                         <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            <button
-                              onClick={() => toggle(v.id)}
-                              style={{
-                                ...miniBtn,
-                                background: checked ? '#22c55e' : '#334155',
-                                color: checked ? '#0b1020' : '#e5e7eb',
-                                border: 'none',
-                              }}
-                              title="Alternar conferência"
-                            >
-                              {checked ? 'Conferido' : 'Marcar'}
-                            </button>
-
-                            <button
-                              onClick={() => void setStatus(v.id, 'FALHA')}
-                              style={{
-                                ...miniBtn,
-                                background: st === 'FALHA' ? '#ef4444' : '#334155',
-                                color: st === 'FALHA' ? '#fff' : '#e5e7eb',
-                                border: 'none',
-                              }}
-                              title="Marcar falha"
-                            >
-                              Falha
-                            </button>
-
-                            <button
-                              onClick={() => void setStatus(v.id, 'PENDENTE')}
-                              style={{
-                                ...miniBtn,
-                                background: st === 'PENDENTE' ? '#f59e0b' : '#334155',
-                                color: st === 'PENDENTE' ? '#0b1020' : '#e5e7eb',
-                                border: 'none',
-                              }}
-                              title="Voltar para pendente"
-                            >
-                              Pendente
-                            </button>
-                          </div>
+                          {isLocked ? (
+                            <span style={{
+                              padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700,
+                              background: st === 'OK' ? '#dcfce7' : st === 'FALHA' ? '#fee2e2' : '#fef3c7',
+                              color: st === 'OK' ? '#166534' : st === 'FALHA' ? '#991b1b' : '#92400e',
+                            }}>
+                              {st === 'OK' ? '✓ Conferido' : st === 'FALHA' ? '✗ Falha' : '○ Pendente'}
+                            </span>
+                          ) : (
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              <button onClick={() => toggle(v.id)}
+                                style={{ ...miniBtn, background: checked ? '#22c55e' : '#334155',
+                                  color: checked ? '#0b1020' : '#e5e7eb', border: 'none' }}
+                                title="Alternar conferência">
+                                {checked ? 'Conferido' : 'Marcar'}
+                              </button>
+                              <button onClick={() => void setStatus(v.id, 'FALHA')}
+                                style={{ ...miniBtn, background: st === 'FALHA' ? '#ef4444' : '#334155',
+                                  color: st === 'FALHA' ? '#fff' : '#e5e7eb', border: 'none' }}
+                                title="Marcar falha">
+                                Falha
+                              </button>
+                              <button onClick={() => void setStatus(v.id, 'PENDENTE')}
+                                style={{ ...miniBtn, background: st === 'PENDENTE' ? '#f59e0b' : '#334155',
+                                  color: st === 'PENDENTE' ? '#0b1020' : '#e5e7eb', border: 'none' }}
+                                title="Voltar para pendente">
+                                Pendente
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );
@@ -574,8 +704,10 @@ export default function CarregamentoChecklistPage() {
               </table>
             </div>
 
-            <div style={{ marginTop: 10, color: '#64748b', fontSize: 12 }}>
-              Checklist agora é persistido no banco (CarregamentoChecklist / CarregamentoChecklistItem).
+            <div style={{ marginTop: 10, color: '#94a3b8', fontSize: 11 }}>
+              {isLocked
+                ? '🔒 Checklist finalizado — marcações somente leitura'
+                : 'Marque os itens conferidos. Clique em "Finalizar e Salvar" para bloquear o checklist.'}
             </div>
           </div>
         </>

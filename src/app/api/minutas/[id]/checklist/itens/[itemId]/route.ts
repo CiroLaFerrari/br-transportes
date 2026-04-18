@@ -30,6 +30,15 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     const status = normStatus(body?.status);
     const note = String(body?.note || '').trim() || null;
 
+    // Verifica se o checklist está finalizado (bloqueado para edição)
+    const existingChecklist = await prisma.carregamentoChecklist.findUnique({
+      where: { minutaId },
+      select: { id: true, status: true },
+    });
+    if (existingChecklist?.status === 'FINALIZADO') {
+      return json({ ok: false, error: 'Checklist finalizado. Não é possível editar. Peça ao administrador para reabrir.' }, 403);
+    }
+
     // garante checklist (com fallback para race condition)
     let checklist: { id: string } | null = null;
     try {
