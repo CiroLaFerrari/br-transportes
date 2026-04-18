@@ -527,23 +527,37 @@ export default function ProdutosPage() {
 
           <button
             onClick={() => {
-              const rows = items.map((p) => [
-                p.code, p.descricao, p.precoUnitario != null ? p.precoUnitario.toFixed(2) : '', p.pesoKg ?? '', p.alturaCm ?? '', p.larguraCm ?? '', p.comprimentoCm ?? '',
+              const esc = (v: any) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+              const today = new Date().toLocaleDateString('pt-BR');
+              const headers = ['Código','Descrição','Preço Unitário (R$)','Peso (kg)','Altura (cm)','Largura (cm)','Comprimento (cm)','Área (m²)','Volume (m³)','Embalado','Tipo Embalagem','Frágil','Empilhável','Posição','Desmontável'];
+              const dataRows = items.map((p) => [
+                p.code, p.descricao, p.precoUnitario != null ? p.precoUnitario.toFixed(2) : '',
+                p.pesoKg ?? '', p.alturaCm ?? '', p.larguraCm ?? '', p.comprimentoCm ?? '',
                 p.areaM2 ?? '', p.volumeM3 ?? '', p.embalado ? 'Sim' : 'Não', p.tipoEmbalagem ?? '',
                 p.fragil ? 'Sim' : 'Não', p.empilhavel ? 'Sim' : 'Não', p.posicao ?? '', p.desmontavel ? 'Sim' : 'Não',
-              ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
-              const header = 'Código,Descrição,Preço Unitário (R$),Peso (kg),Altura (cm),Largura (cm),Comprimento (cm),Área (m²),Volume (m³),Embalado,Tipo Embalagem,Frágil,Empilhável,Posição,Desmontável';
-              const csv = '\uFEFF' + header + '\n' + rows.join('\n');
-              const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+              ]);
+              const colCount = headers.length;
+              let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Produtos</x:Name></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body><table>`;
+              html += `<tr><td colspan="${colCount}" style="background:#1A4A1A;color:#FFF;font-weight:bold;font-size:14pt;padding:8px 12px;font-family:Calibri,Arial">BR Transportes e Logística</td></tr>`;
+              html += `<tr><td colspan="${colCount}" style="background:#F5BE16;color:#1A4A1A;font-weight:bold;font-size:11pt;padding:6px 12px;font-family:Calibri,Arial">Cadastro de Produtos</td></tr>`;
+              html += `<tr><td colspan="${colCount}" style="background:#f0fdf0;color:#475569;font-size:9pt;padding:4px 12px;font-family:Calibri,Arial">Gerado em: ${today}</td></tr>`;
+              html += '<tr>' + headers.map(h => `<th style="background:#1A4A1A;color:#FFF;font-weight:bold;font-size:10pt;padding:6px 10px;border:1px solid #0d2d0d;text-transform:uppercase;font-family:Calibri,Arial">${esc(h)}</th>`).join('') + '</tr>';
+              dataRows.forEach((row, r) => {
+                const bg = r % 2 === 0 ? '#FFF' : '#f0fdf4';
+                html += '<tr>' + row.map(v => `<td style="background:${bg};padding:5px 10px;border:1px solid #e2e8f0;font-size:10pt;font-family:Calibri,Arial">${esc(String(v))}</td>`).join('') + '</tr>';
+              });
+              html += `<tr><td colspan="${colCount}" style="font-size:8pt;color:#94a3b8;padding:8px 12px;font-family:Calibri,Arial">BR Transportes — ${today}</td></tr>`;
+              html += '</table></body></html>';
+              const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
-              a.href = url; a.download = 'produtos.csv'; a.click();
+              a.href = url; a.download = 'produtos.xls'; a.click();
               URL.revokeObjectURL(url);
             }}
             disabled={items.length === 0}
             style={{ ...btn, background: '#F5BE16', color: '#1A4A1A', opacity: items.length === 0 ? 0.5 : 1 }}
           >
-            Exportar Excel (CSV)
+            ⬇ Exportar Excel
           </button>
 
           {editingId && (

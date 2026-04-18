@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { buildXls, xlsResponse } from '@/lib/xls';
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -146,13 +147,14 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     }
   }
 
-  const csv = rows.join('\n');
-
-  return new NextResponse(csv, {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="minuta-${minuta.nfNumero || minutaId}.csv"`,
-    },
-  });
+  const headers = rows[0].split(',').map((h) => h.replace(/^"|"$/g, ''));
+  const dataRows = rows.slice(1).map((line) =>
+    line.split(',').map((cell) => cell.replace(/^"|"$/g, '').replace(/""/g, '"')),
+  );
+  const xls = buildXls(
+    `Minuta de Conferência — NF ${minuta.nfNumero}`,
+    headers,
+    dataRows,
+  );
+  return xlsResponse(xls, `minuta-${minuta.nfNumero || minutaId}.xls`);
 }

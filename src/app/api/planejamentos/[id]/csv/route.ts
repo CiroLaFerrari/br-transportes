@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { buildXls, xlsResponse } from '@/lib/xls';
 
 type RouteContext = {
   params: Promise<{ id: string }>; // Next 15
@@ -152,17 +153,16 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       lines.push(row.map(escCsv).join(','));
     }
 
-    const csv = lines.join('\n');
-    const fileName = `planejamento-${plan.id}.csv`;
+    const dataRows = lines.slice(1).map((line) =>
+      line.split(',').map((cell) => cell.replace(/^"|"$/g, '').replace(/""/g, '"')),
+    );
 
-    return new NextResponse(csv, {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="${fileName}"`,
-        'Cache-Control': 'no-store',
-      },
-    });
+    const xls = buildXls(
+      `Planejamento — ${plan.name || plan.id}`,
+      cols,
+      dataRows,
+    );
+    return xlsResponse(xls, `planejamento-${plan.id}.xls`);
   } catch (e: any) {
     console.error('GET /api/planejamentos/[id]/csv error:', e);
     return NextResponse.json({ ok: false, error: e?.message || 'Erro interno' }, { status: 500 });

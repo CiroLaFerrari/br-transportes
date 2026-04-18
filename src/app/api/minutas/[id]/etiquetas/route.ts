@@ -1,6 +1,7 @@
 // src/app/api/minutas/[id]/etiquetas/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getMinutaDelegate } from '@/lib/prisma-delegates';
+import { buildXls, xlsResponse } from '@/lib/xls';
 
 type RouteContext = {
   params: Promise<{ id: string }>; // Next 15
@@ -246,60 +247,40 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
       }
     }
 
-    if (format === 'csv') {
+    if (format === 'csv' || format === 'xls' || format === 'excel') {
       const headerCols = [
-        'minutaId',
-        'minutaNumero',
-        'nfNumero',
-        'cliente',
-        'cidade',
-        'uf',
-        'etiqueta',
-        'tipo',
-        'codigo',
-        'descricao',
-        'pesoKg',
-        'alturaCm',
-        'larguraCm',
-        'comprimentoCm',
-        'areaM2',
-        'volumeM3',
+        'Minuta ID', 'Nº Minuta', 'NF', 'Cliente', 'Cidade', 'UF',
+        'Etiqueta', 'Tipo', 'Código', 'Descrição',
+        'Peso (kg)', 'Altura (cm)', 'Largura (cm)', 'Comprimento (cm)', 'Área (m²)', 'Volume (m³)',
       ];
 
-      const lines = [headerCols.map(escCsv).join(',')];
+      const dataRows = volumesFlat.map((v) => [
+        minutaId,
+        header.minutaNumero ?? '',
+        header.nfNumero ?? '',
+        header.cliente ?? '',
+        header.cidade ?? '',
+        header.uf ?? '',
+        v.etiqueta,
+        v.tipo,
+        v.codigo,
+        v.descricao,
+        v.pesoKg ?? '',
+        v.alturaCm ?? '',
+        v.larguraCm ?? '',
+        v.comprimentoCm ?? '',
+        v.areaM2 ?? '',
+        v.volumeM3 ?? '',
+      ]);
 
-      for (const v of volumesFlat) {
-        const row = [
-          minutaId,
-          header.minutaNumero ?? '',
-          header.nfNumero ?? '',
-          header.cliente ?? '',
-          header.cidade ?? '',
-          header.uf ?? '',
-          v.etiqueta,
-          v.tipo,
-          v.codigo,
-          v.descricao,
-          v.pesoKg ?? '',
-          v.alturaCm ?? '',
-          v.larguraCm ?? '',
-          v.comprimentoCm ?? '',
-          v.areaM2 ?? '',
-          v.volumeM3 ?? '',
-        ];
-        lines.push(row.map(escCsv).join(','));
-      }
-
-      const csv = lines.join('\n');
-      return new NextResponse(csv, {
-        status: 200,
-        headers: {
-          'Content-Type': 'text/csv; charset=utf-8',
-          'Content-Disposition': `attachment; filename="etiquetas-${header.nfNumero || minutaId}.csv"`,
-          'Cache-Control': 'no-store',
-          'X-Minuta-Delegate': String(key || ''),
-        },
-      });
+      const xls = buildXls(
+        `Etiquetas — NF ${header.nfNumero || minutaId}`,
+        headerCols,
+        dataRows,
+      );
+      const res = xlsResponse(xls, `etiquetas-${header.nfNumero || minutaId}.xls`);
+      res.headers.set('X-Minuta-Delegate', String(key || ''));
+      return res;
     }
 
     const html = buildHtmlEtiquetas({ header, volumes: volumesFlat });

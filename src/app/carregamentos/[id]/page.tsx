@@ -308,8 +308,8 @@ export default function CarregamentoChecklistPage() {
     window.open(`/api/minutas/${encodeURIComponent(minutaId)}/etiquetas`, '_blank');
   }
 
-  function baixarCsv() {
-    window.open(`/api/minutas/${encodeURIComponent(minutaId)}/etiquetas?format=csv`, '_blank');
+  function baixarExcel() {
+    window.open(`/api/minutas/${encodeURIComponent(minutaId)}/etiquetas?format=xls`, '_blank');
   }
 
   const [scanInput, setScanInput] = useState('');
@@ -425,9 +425,9 @@ export default function CarregamentoChecklistPage() {
             style={{ ...btn, background: GREEN, color: GOLD, border: `1px solid ${GREEN}` }}>
             🖨 Imprimir etiquetas
           </button>
-          <button onClick={baixarCsv}
+          <button onClick={baixarExcel}
             style={{ ...btn, background: '#fff', color: GREEN, border: `1px solid ${BORDER}` }}>
-            ⬇ Baixar CSV
+            ⬇ Baixar Excel
           </button>
         </div>
       </div>

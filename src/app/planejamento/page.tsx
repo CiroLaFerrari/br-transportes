@@ -1776,13 +1776,13 @@ export default function PlanejamentoPage() {
     }
   }
 
-  async function exportarCsvPlanejamento() {
+  async function exportarExcelPlanejamento() {
     try {
       setError(null);
       const id = await ensurePlanId();
       window.open(`/api/planejamentos/${id}/csv`, '_blank');
     } catch (e: any) {
-      setError(e?.message || 'Falha ao exportar CSV');
+      setError(e?.message || 'Falha ao exportar Excel');
     }
   }
 
@@ -2694,8 +2694,8 @@ export default function PlanejamentoPage() {
               Imprimir
             </button>
 
-            <button onClick={exportarCsvPlanejamento} style={{ ...btn, background: '#22c55e', color: '#1e293b', padding: '8px 14px' }} title="Export CSV do planejamento">
-              Export CSV
+            <button onClick={exportarExcelPlanejamento} style={{ ...btn, background: '#22c55e', color: '#1e293b', padding: '8px 14px' }} title="Exportar Excel do planejamento">
+              Export Excel
             </button>
 
             {planId && (

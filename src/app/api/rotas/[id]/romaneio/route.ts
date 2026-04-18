@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { buildXls, xlsResponse } from '@/lib/xls';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -204,38 +205,24 @@ export async function GET(req: NextRequest, ctx: Ctx) {
 
     const entregues = (rota.paradas || []).filter((p) => p.statusExec === 'ENTREGUE').length;
 
-    // CSV
-    if (format === 'csv') {
-      const headerCols = ['rotaId', 'dataRota', 'statusRota', 'ordem', 'nf', 'cliente', 'cidade', 'uf', 'statusExec', 'checkinAt', 'checkoutAt'];
-      const lines = [headerCols.map(escCsv).join(',')];
-
-      for (const r of rows) {
-        lines.push(
-          [
-            rotaId,
-            (rota as any).dataRota ? String((rota as any).dataRota) : '',
-            String((rota as any).status ?? ''),
-            r.ordem,
-            r.nf,
-            r.cliente,
-            r.cidade,
-            r.uf,
-            r.statusExec,
-            r.checkinAt ?? '',
-            r.checkoutAt ?? '',
-          ].map(escCsv).join(','),
-        );
-      }
-
-      const csv = lines.join('\n');
-      return new NextResponse(csv, {
-        status: 200,
-        headers: {
-          'Content-Type': 'text/csv; charset=utf-8',
-          'Content-Disposition': `attachment; filename="romaneio-${rotaId}.csv"`,
-          'Cache-Control': 'no-store',
-        },
-      });
+    // Excel / CSV
+    if (format === 'csv' || format === 'xls' || format === 'excel') {
+      const headerCols = ['Rota ID', 'Data Rota', 'Status Rota', 'Ordem', 'NF', 'Cliente', 'Cidade', 'UF', 'Status Entrega', 'Check-in', 'Check-out'];
+      const dataRows = rows.map((r) => [
+        rotaId,
+        (rota as any).dataRota ? String((rota as any).dataRota) : '',
+        String((rota as any).status ?? ''),
+        r.ordem,
+        r.nf,
+        r.cliente,
+        r.cidade,
+        r.uf,
+        r.statusExec,
+        r.checkinAt ? fmtDate(r.checkinAt) : '',
+        r.checkoutAt ? fmtDate(r.checkoutAt) : '',
+      ]);
+      const xls = buildXls(`Romaneio de Entregas — Rota ${rotaId}`, headerCols, dataRows);
+      return xlsResponse(xls, `romaneio-${rotaId}.xls`);
     }
 
     // HTML

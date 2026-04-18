@@ -307,12 +307,12 @@ export default function CarregamentoMinutaPage() {
             Imprimir etiquetas
           </a>
           <a
-            href={`/api/minutas/${encodeURIComponent(minutaId)}/carregamento?format=csv`}
+            href={`/api/minutas/${encodeURIComponent(minutaId)}/csv`}
             target="_blank"
             rel="noreferrer"
             style={{ ...btn, background: '#0891b2', color: '#fff', textDecoration: 'none' }}
           >
-            Baixar CSV
+            ⬇ Baixar Excel
           </a>
         </div>
       </div>
