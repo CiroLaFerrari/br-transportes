@@ -37,6 +37,8 @@ type PlacedBox = {
   unitIdx: number;     // which unit of this item (when qty > 1)
 };
 
+type LayerSet = { floor: Box[]; level1: Box[]; level2: Box[] };
+
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const COLORS = [
@@ -117,6 +119,61 @@ function buildUnits(
     }
   }
   return units;
+}
+
+/**
+ * Divide items into 3 load layers (assoalho, 1° andar, 2° andar).
+ *
+ * Physical logic:
+ *  - Non-stackable items always go to the floor.
+ *  - Items are sorted tallest-first so heavy / large items go to the bottom.
+ *  - Then split into thirds: bottom third → floor, middle → 1° andar, top → 2° andar.
+ */
+function assignLayers(boxes: Box[]): LayerSet {
+  const sorted = [...boxes].sort((a, b) => {
+    // Non-stackable always to floor
+    const nsA = a.empilhavel ? 0 : 1;
+    const nsB = b.empilhavel ? 0 : 1;
+    if (nsA !== nsB) return nsB - nsA; // non-stackable first
+    // Tallest items to floor
+    return normDim(b.alturaCm, 60) - normDim(a.alturaCm, 60);
+  });
+
+  // Expand by quantity so each physical unit is counted
+  const expanded: Box[] = [];
+  for (const b of sorted) {
+    for (let q = 0; q < Math.max(1, b.quantidade); q++) {
+      expanded.push(b);
+    }
+  }
+
+  const third = Math.ceil(expanded.length / 3);
+  // Collapse back to unique boxes per layer (deduplicate)
+  const toUniqueBoxes = (arr: Box[]) =>
+    arr.filter((v, i, self) => self.indexOf(v) === i);
+
+  return {
+    floor:  toUniqueBoxes(expanded.slice(0, third)),
+    level1: toUniqueBoxes(expanded.slice(third, third * 2)),
+    level2: toUniqueBoxes(expanded.slice(third * 2)),
+  };
+}
+
+// ── Layer Badge ───────────────────────────────────────────────────────────────
+
+function LayerBadge({ tier, count, color, note }: { tier: string; count: number; color: string; note: string }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px',
+      border: `1px solid ${color}33`, borderLeft: `4px solid ${color}`,
+      borderRadius: 8, background: `${color}08`, fontSize: 12,
+    }}>
+      <div>
+        <div style={{ fontWeight: 800, color, fontSize: 13 }}>{tier}</div>
+        <div style={{ color: '#64748b', fontSize: 11 }}>{count} produto(s) — {note}</div>
+      </div>
+    </div>
+  );
 }
 
 // ── SVG View Component ────────────────────────────────────────────────────────
@@ -369,10 +426,16 @@ export default function CargaLayoutPage() {
     return (topW(b) * topH(b)) - (topW(a) * topH(a));
   });
 
-  const units = buildUnits(sorted, coletaColorMap);
+  // Assign items to 3 load layers
+  const layers = assignLayers(sorted);
 
-  const topPlaced  = shelfPack(units, truckLarg, truckComp, topW, topH);
-  const sidePlaced = shelfPack(units, truckComp, truckAlt,  sideW, sideH);
+  const floorUnits  = buildUnits(layers.floor,  coletaColorMap);
+  const level1Units = buildUnits(layers.level1, coletaColorMap);
+  const level2Units = buildUnits(layers.level2, coletaColorMap);
+
+  const floorPlaced  = shelfPack(floorUnits,  truckLarg, truckComp, topW, topH);
+  const level1Placed = shelfPack(level1Units, truckLarg, truckComp, topW, topH);
+  const level2Placed = shelfPack(level2Units, truckLarg, truckComp, topW, topH);
 
   // Stats
   const totalVol   = boxes.reduce((s, b) => s + (b.volumeM3Total || 0), 0);
@@ -381,12 +444,15 @@ export default function CargaLayoutPage() {
     ? (veiculo.compCm * veiculo.largCm * veiculo.altCm) / 1_000_000 : null;
   const occupancy  = truckVolM3 && truckVolM3 > 0
     ? Math.min((totalVol / truckVolM3) * 100, 100) : null;
-  const overflowCount = topPlaced.filter(b => b.overflow).length;
+  const overflowCount = floorPlaced.filter(b => b.overflow).length
+    + level1Placed.filter(b => b.overflow).length
+    + level2Placed.filter(b => b.overflow).length;
 
-  // Hover info
+  // Hover info — search across all 3 layer views
   const hovBox = hoveredKey
-    ? topPlaced.find(b => `${b.box.itemId}-${b.unitIdx}` === hoveredKey)
-      || sidePlaced.find(b => `${b.box.itemId}-${b.unitIdx}` === hoveredKey)
+    ? floorPlaced.find(b => `${b.box.itemId}-${b.unitIdx}` === hoveredKey)
+      || level1Placed.find(b => `${b.box.itemId}-${b.unitIdx}` === hoveredKey)
+      || level2Placed.find(b => `${b.box.itemId}-${b.unitIdx}` === hoveredKey)
     : null;
 
   // Shared styles
@@ -507,11 +573,18 @@ export default function CargaLayoutPage() {
                 </div>
               </div>
 
-              {/* Views container */}
+              {/* Layer summary badges */}
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+                <LayerBadge tier="Assoalho" count={layers.floor.length} color="#1A4A1A" note="Itens mais pesados / não empilháveis" />
+                <LayerBadge tier="1° Andar" count={layers.level1.length} color="#2563eb" note="Segunda camada de carga" />
+                <LayerBadge tier="2° Andar" count={layers.level2.length} color="#7c3aed" note="Itens mais leves no topo" />
+              </div>
+
+              {/* Views container — 3 layer floor plans */}
               <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
                 <CargaView
-                  title="Vista de Cima (planta baixa)"
-                  placed={topPlaced}
+                  title="🟩 Assoalho — Vista de Cima"
+                  placed={floorPlaced}
                   viewW={truckLarg}
                   viewL={truckComp}
                   labelW="Largura"
@@ -520,12 +593,22 @@ export default function CargaLayoutPage() {
                   setHoveredKey={setHoveredKey}
                 />
                 <CargaView
-                  title="Vista Lateral (perfil)"
-                  placed={sidePlaced}
-                  viewW={truckComp}
-                  viewL={truckAlt}
-                  labelW="Comprimento"
-                  labelL="Altura"
+                  title="🟦 1° Andar — Vista de Cima"
+                  placed={level1Placed}
+                  viewW={truckLarg}
+                  viewL={truckComp}
+                  labelW="Largura"
+                  labelL="Comprimento"
+                  hoveredKey={hoveredKey}
+                  setHoveredKey={setHoveredKey}
+                />
+                <CargaView
+                  title="🟣 2° Andar — Vista de Cima"
+                  placed={level2Placed}
+                  viewW={truckLarg}
+                  viewL={truckComp}
+                  labelW="Largura"
+                  labelL="Comprimento"
                   hoveredKey={hoveredKey}
                   setHoveredKey={setHoveredKey}
                 />
@@ -533,8 +616,8 @@ export default function CargaLayoutPage() {
 
               {/* Scale note */}
               <div style={{ marginTop: 12, fontSize: 11, color: '#94a3b8' }}>
-                Nota: posicionamento é estimado para visualização. Itens podem ser rotacionados (↻) para melhor aproveitamento.
-                A IA de organização de carga usará estas dimensões para calcular o arranjo ótimo.
+                Nota: cada andar mostra a planta baixa (vista de cima) dos itens naquela camada.
+                Itens não empilháveis e os mais altos vão ao assoalho. Posicionamento estimado — a IA de organização calculará o arranjo ótimo.
               </div>
             </div>
           ) : (

@@ -86,6 +86,7 @@ type PatioColetaRow = {
   pesoTotalKg: number | null;
   valorFrete: number | null;
   Cliente?: { id?: string; razao?: string | null } | null;
+  itens?: { nome: string }[] | null;
 };
 
 type CostInputs = {
@@ -2060,10 +2061,7 @@ export default function PlanejamentoPage() {
                 <th style={th}>Cliente</th>
                 <th style={th}>Cidade/UF</th>
                 <th style={th}>Peso (kg)</th>
-                <th style={th}>Volume (m³)</th>
-                <th style={th}>Frete (R$)</th>
-                <th style={th}>Entrada pátio</th>
-                <th style={th}>ID</th>
+                <th style={th}>Descrição dos Produtos</th>
               </tr>
             </thead>
             <tbody>
@@ -2080,15 +2078,17 @@ export default function PlanejamentoPage() {
                     {c.cidade} / {String(c.uf || '').toUpperCase()}
                   </td>
                   <td style={tdNum}>{c.pesoTotalKg ?? '-'}</td>
-                  <td style={tdNum}>{metricasMap[c.id]?.volumeM3 != null ? metricasMap[c.id].volumeM3.toFixed(3) : '-'}</td>
-                  <td style={tdNum}>{c.valorFrete ?? '-'}</td>
-                  <td style={td}>{c.entradaPatioAt ? fmtDate(c.entradaPatioAt) : '-'}</td>
-                  <td style={{ ...td, fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>{c.id}</td>
+                  <td style={{ ...td, fontSize: 12, color: '#475569', maxWidth: 320 }}>
+                    {c.itens && c.itens.length > 0
+                      ? c.itens.map((item) => item.nome).join(' | ')
+                      : <span style={{ color: '#94a3b8' }}>—</span>
+                    }
+                  </td>
                 </tr>
               ))}
               {filteredPatioList.length === 0 && !patioLoading && (
                 <tr>
-                  <td style={td} colSpan={9}>
+                  <td style={td} colSpan={6}>
                     {ufFilter.size > 0 ? '(Nenhuma coleta para as UFs selecionadas)' : '(Nenhuma coleta EM_PATIO carregada)'}
                   </td>
                 </tr>

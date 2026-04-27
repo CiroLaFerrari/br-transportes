@@ -26,13 +26,21 @@ export async function GET(req: NextRequest) {
 
     const where: any = {};
 
-    if (dateFromStr) {
-      where.entradaPatioAt = { ...(where.entradaPatioAt || {}), gte: new Date(dateFromStr) };
-    }
-    if (dateToStr) {
-      const to = new Date(dateToStr);
-      to.setHours(23, 59, 59, 999);
-      where.entradaPatioAt = { ...(where.entradaPatioAt || {}), lte: to };
+    // Date filter: match by entry date OR completion date so that delivered
+    // coletas are included even if they entered the pátio before the date range.
+    if (dateFromStr || dateToStr) {
+      const dateFilter: any = {};
+      if (dateFromStr) dateFilter.gte = new Date(dateFromStr);
+      if (dateToStr) {
+        const to = new Date(dateToStr);
+        to.setHours(23, 59, 59, 999);
+        dateFilter.lte = to;
+      }
+      where.OR = [
+        { entradaPatioAt: dateFilter },
+        { fimPatioAt: dateFilter },
+        { embarqueAt: dateFilter },
+      ];
     }
 
     if (statusFilter !== 'ALL') {

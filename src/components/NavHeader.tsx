@@ -15,6 +15,8 @@ const navLinks = [
   { href: '/scan', label: 'Scan' },
   { href: '/etiquetas', label: 'Etiquetas' },
   { href: '/relatorios', label: 'Relatorios' },
+  { href: '/homologacao', label: '📋 Homologação' },
+  { href: '/nfe', label: '📄 Importar NF-e' },
 ];
 
 const cadLinks = [

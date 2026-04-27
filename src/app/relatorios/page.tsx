@@ -380,10 +380,10 @@ function RotasTab() {
 
 function PatioTab() {
   const today = new Date();
-  const thirtyDaysAgo = new Date(today);
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const oneYearAgo = new Date(today);
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
-  const [dateFrom, setDateFrom] = useState(fmtDateInput(thirtyDaysAgo));
+  const [dateFrom, setDateFrom] = useState(fmtDateInput(oneYearAgo));
   const [dateTo, setDateTo] = useState(fmtDateInput(today));
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [report, setReport] = useState<PatioReport | null>(null);
