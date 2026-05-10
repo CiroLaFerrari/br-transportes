@@ -96,7 +96,7 @@ export async function GET(req: NextRequest) {
         createdAt: true as any,
         Cliente: { select: { id: true, razao: true } },
         itens: {
-          select: { nome: true },
+          select: { produto: { select: { descricao: true } } },
           take: 5,
         },
       },
