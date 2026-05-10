@@ -86,7 +86,7 @@ type PatioColetaRow = {
   pesoTotalKg: number | null;
   valorFrete: number | null;
   Cliente?: { id?: string; razao?: string | null } | null;
-  itens?: { produto?: { descricao?: string | null } | null }[] | null;
+  itens?: { Produto?: { descricao?: string | null } | null }[] | null;
 };
 
 type CostInputs = {
@@ -2080,7 +2080,7 @@ export default function PlanejamentoPage() {
                   <td style={tdNum}>{c.pesoTotalKg ?? '-'}</td>
                   <td style={{ ...td, fontSize: 12, color: '#475569', maxWidth: 320 }}>
                     {c.itens && c.itens.length > 0
-                      ? c.itens.map((item) => item.produto?.descricao ?? '').filter(Boolean).join(' | ')
+                      ? c.itens.map((item) => item.Produto?.descricao ?? '').filter(Boolean).join(' | ')
                       : <span style={{ color: '#94a3b8' }}>—</span>
                     }
                   </td>
