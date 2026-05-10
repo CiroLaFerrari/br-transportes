@@ -699,18 +699,18 @@ function PatioUf({ data }: { data: PatioReport['analiseUf'] }) {
 }
 
 function PatioClientes({ data, coletas, dateFrom, dateTo }: { data: PatioReport['analiseCliente']; coletas: PatioColeta[]; dateFrom: string; dateTo: string }) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  function toggle(key: string) { setExpanded((p) => ({ ...p, [key]: !p[key] })); }
+
   function exportClientExcel(clienteName: string) {
     const clienteColetas = coletas.filter((c) => c.cliente === clienteName);
-    const headers = ['NF', 'Cidade', 'UF', 'Status', 'Peso (kg)', 'Valor Frete', 'Data Entrada Pátio', 'Data Saída Pátio', 'Lead Time (dias)'];
+    const headers = ['NF', 'Cidade', 'UF', 'Status', 'Peso (kg)', 'Valor Frete (R$)', 'Entrada Pátio', 'Saída Pátio', 'Lead Time (dias)'];
     const rows = clienteColetas.map((c) => [
-      c.nf,
-      c.cidade,
-      c.uf,
-      c.status,
+      c.nf, c.cidade, c.uf, c.status,
       c.pesoTotalKg != null ? String(c.pesoTotalKg) : '',
       c.valorFrete != null ? String(c.valorFrete) : '',
-      fmtDateBR(c.entradaPatioAt),
-      fmtDateBR(c.fimPatioAt),
+      fmtDateBR(c.entradaPatioAt), fmtDateBR(c.fimPatioAt),
       c.leadTimeDias != null ? String(c.leadTimeDias) : '',
     ]);
     const safeName = clienteName.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -721,42 +721,86 @@ function PatioClientes({ data, coletas, dateFrom, dateTo }: { data: PatioReport[
   }
 
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={tableStyle}>
-        <thead>
-          <tr style={{ background: '#f8fafc' }}>
-            <th style={thStyle}>Cliente</th>
-            <th style={thStyle}>CNPJ</th>
-            <th style={{ ...thStyle, textAlign: 'right' }}>Coletas</th>
-            <th style={{ ...thStyle, textAlign: 'right' }}>Média (dias)</th>
-            <th style={{ ...thStyle, textAlign: 'right' }}>Máx (dias)</th>
-            <th style={{ ...thStyle, textAlign: 'right' }}>Frete Total</th>
-            <th style={{ ...thStyle, textAlign: 'center' }}>Exportar</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((r) => (
-            <tr key={`${r.cnpj || ''}||${r.cliente}`} style={{ borderTop: '1px solid #f1f5f9' }}>
-              <td style={{ ...tdStyle, fontWeight: 600 }}>{r.cliente}</td>
-              <td style={tdStyle}>{r.cnpj || '-'}</td>
-              <td style={{ ...tdStyle, textAlign: 'right' }}>{r.count}</td>
-              <td style={{ ...tdStyle, textAlign: 'right', color: r.mediaDias > 15 ? '#dc2626' : r.mediaDias > 7 ? '#f59e0b' : '#334155' }}>
-                {fmtDec.format(r.mediaDias)}
-              </td>
-              <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtDec.format(r.maxDias)}</td>
-              <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600 }}>{fmtBRL.format(r.valorFrete)}</td>
-              <td style={{ ...tdStyle, textAlign: 'center' }}>
-                <button onClick={() => exportClientExcel(r.cliente)} style={{ ...btnOutline, padding: '4px 10px', fontSize: 11 }}>
-                  Exportar Excel
-                </button>
-              </td>
-            </tr>
-          ))}
-          {data.length === 0 && (
-            <tr><td colSpan={6} style={{ ...tdStyle, textAlign: 'center', color: '#94a3b8' }}>Sem dados.</td></tr>
-          )}
-        </tbody>
-      </table>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {data.length === 0 && (
+        <div style={{ textAlign: 'center', color: '#94a3b8', padding: 24 }}>Sem dados no período.</div>
+      )}
+      {data.map((r) => {
+        const key = `${r.cnpj || ''}||${r.cliente}`;
+        const isOpen = !!expanded[key];
+        const clienteColetas = coletas.filter((c) => c.cliente === r.cliente).sort((a, b) => (b.entradaPatioAt ?? '').localeCompare(a.entradaPatioAt ?? ''));
+
+        return (
+          <div key={key} style={{ border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+            {/* Cabeçalho do cliente */}
+            <div
+              onClick={() => toggle(key)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', cursor: 'pointer', background: isOpen ? '#f0fdf4' : '#f8fafc', gap: 12, flexWrap: 'wrap' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 200 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#1A4A1A' }}>{r.cliente}</span>
+                {r.cnpj && <span style={{ fontSize: 11, color: '#6b7280', background: '#f3f4f6', padding: '1px 6px', borderRadius: 4 }}>{r.cnpj}</span>}
+              </div>
+              <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: '#6b7280' }}>Coletas</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: '#111827' }}>{r.count}</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: '#6b7280' }}>Média</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: r.mediaDias > 15 ? '#dc2626' : r.mediaDias > 7 ? '#f59e0b' : '#16a34a' }}>{fmtDec.format(r.mediaDias)}d</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: '#6b7280' }}>Frete Total</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: '#1A4A1A' }}>{fmtBRL.format(r.valorFrete)}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={(e) => { e.stopPropagation(); exportClientExcel(r.cliente); }}
+                    style={{ ...btnOutline, padding: '4px 10px', fontSize: 11 }}>
+                    📥 Excel
+                  </button>
+                  <span style={{ fontSize: 18, color: '#6b7280', lineHeight: 1, userSelect: 'none' }}>{isOpen ? '▲' : '▼'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Tabela detalhada de NFs */}
+            {isOpen && (
+              <div style={{ overflowX: 'auto', borderTop: '1px solid #e5e7eb' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: '#f9fafb' }}>
+                      {['NF', 'Cidade/UF', 'Status', 'Peso (kg)', 'Frete (R$)', 'Entrada', 'Saída', 'Lead Time'].map((h) => (
+                        <th key={h} style={{ padding: '6px 10px', textAlign: h === 'NF' || h === 'Cidade/UF' ? 'left' : 'right', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap', borderBottom: '1px solid #e5e7eb' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clienteColetas.map((c, i) => (
+                      <tr key={c.nf + i} style={{ borderTop: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                        <td style={{ padding: '5px 10px', fontWeight: 600, color: '#1e40af' }}>{c.nf}</td>
+                        <td style={{ padding: '5px 10px' }}>{c.cidade}/{c.uf}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right' }}>
+                          <span style={{ background: statusColor(c.status) + '22', color: statusColor(c.status), padding: '1px 7px', borderRadius: 10, fontWeight: 600, fontSize: 11 }}>
+                            {c.status}
+                          </span>
+                        </td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right' }}>{c.pesoTotalKg ?? '—'}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right' }}>{c.valorFrete != null ? fmtBRL.format(c.valorFrete) : '—'}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>{fmtDateBR(c.entradaPatioAt)}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>{fmtDateBR(c.fimPatioAt)}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right', fontWeight: 600, color: (c.leadTimeDias ?? 0) > 15 ? '#dc2626' : (c.leadTimeDias ?? 0) > 7 ? '#f59e0b' : '#16a34a' }}>
+                          {c.leadTimeDias != null ? `${c.leadTimeDias}d` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

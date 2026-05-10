@@ -88,6 +88,8 @@ export default function ColetasPage() {
   const [total, setTotal] = useState(0);
 
   // form criação
+  const [tipoFrete, setTipoFrete] = useState<'fixo' | 'percentual'>('fixo');
+  const [pctFrete, setPctFrete] = useState('');
   const [form, setForm] = useState({
     nf: '',
     cidade: '',
@@ -249,12 +251,28 @@ export default function ColetasPage() {
     e.preventDefault();
     setMsg(null);
 
-    const vf = Number(form.valorFrete.replace(',', '.'));
-    const pk = Number(form.pesoTotalKg.replace(',', '.'));
+    // #16 — NF obrigatória
+    if (!form.nf.trim()) return setMsg('Número da NF é obrigatório');
 
-    if (!Number.isFinite(vf)) return setMsg('Valor do frete inválido');
+    // #11 — Frete: fixo ou percentual
+    let vf: number;
+    if (tipoFrete === 'percentual') {
+      const pct = Number(pctFrete.replace(',', '.'));
+      if (!Number.isFinite(pct) || pct <= 0) return setMsg('Percentual de frete inválido');
+      vf = (totaisItens.valor * pct) / 100;
+    } else {
+      vf = Number(form.valorFrete.replace(',', '.'));
+      if (!Number.isFinite(vf)) return setMsg('Valor do frete inválido');
+    }
+
+    const pk = Number(form.pesoTotalKg.replace(',', '.'));
     if (!Number.isFinite(pk)) return setMsg('Peso total (kg) inválido');
     if (!form.clienteId.trim()) return setMsg('Selecione ou informe o Cliente');
+
+    // #16 — Aviso se sem itens
+    if (itensColeta.length === 0) {
+      if (!confirm('Nenhum produto vinculado à coleta. Continuar mesmo assim?')) return;
+    }
 
     try {
       const res = await fetch('/api/coletas', {
@@ -707,23 +725,29 @@ export default function ColetasPage() {
         </div>
 
         <div>
-          <label style={{ display: 'block', fontSize: 12, color: '#64748b' }}>Valor do frete</label>
-          <input
-            name="valorFrete"
-            value={form.valorFrete}
-            onChange={onChange}
-            placeholder="Ex.: 456.00"
-            inputMode="decimal"
-            style={{
-              width: '100%',
-              padding: 8,
-              background: '#ffffff',
-              color: '#1e293b',
-              border: '1px solid #d1d5db',
-              borderRadius: 6,
-            }}
-            required
-          />
+          <label style={{ display: 'block', fontSize: 12, color: '#64748b', marginBottom: 3 }}>
+            Frete&nbsp;
+            <span style={{ display: 'inline-flex', borderRadius: 4, overflow: 'hidden', border: '1px solid #d1d5db', fontSize: 10, verticalAlign: 'middle' }}>
+              {(['fixo', 'percentual'] as const).map((t) => (
+                <button key={t} type="button" onClick={() => setTipoFrete(t)}
+                  style={{ padding: '1px 6px', background: tipoFrete === t ? '#1A4A1A' : '#fff', color: tipoFrete === t ? '#fff' : '#374151', border: 'none', cursor: 'pointer', fontWeight: tipoFrete === t ? 700 : 400 }}>
+                  {t === 'fixo' ? 'R$' : '%'}
+                </button>
+              ))}
+            </span>
+          </label>
+          {tipoFrete === 'fixo' ? (
+            <input name="valorFrete" value={form.valorFrete} onChange={onChange} placeholder="456.00"
+              inputMode="decimal" style={{ width: '100%', padding: 8, background: '#fff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }} />
+          ) : (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <input value={pctFrete} onChange={(e) => setPctFrete(e.target.value)} placeholder="%" inputMode="decimal"
+                style={{ width: 52, padding: 8, background: '#fff', color: '#1e293b', border: '1px solid #d1d5db', borderRadius: 6 }} />
+              <span style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap' }}>
+                = R$ {((totaisItens.valor * (Number(pctFrete.replace(',', '.')) || 0)) / 100).toFixed(2)}
+              </span>
+            </div>
+          )}
         </div>
 
         <div>

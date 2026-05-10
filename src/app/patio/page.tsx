@@ -9,7 +9,7 @@ type ColetaRow = {
   nf: string;
   cidade: string;
   uf: string;
-  status: 'EM_PATIO' | 'CARREGADA' | 'EM_TRANSITO' | 'ENTREGUE';
+  status: 'EM_PATIO' | 'EM_CARGA' | 'CARREGADA' | 'EM_TRANSITO' | 'ENTREGUE';
   entradaPatioAt: string | null;
   embarqueAt: string | null;
   fimPatioAt: string | null;

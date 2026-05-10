@@ -31,6 +31,7 @@ type Counts = {
 
 const STATUS_COLORS: Record<string, string> = {
   EM_PATIO: '#f59e0b',
+  EM_CARGA: '#6366f1',
   CARREGADA: '#3b82f6',
   EM_TRANSITO: '#8b5cf6',
   ENTREGUE: '#22c55e',
@@ -38,6 +39,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   EM_PATIO: 'Pátio',
+  EM_CARGA: 'Em Carga',
   CARREGADA: 'Carregada',
   EM_TRANSITO: 'Trânsito',
   ENTREGUE: 'Entregue',
