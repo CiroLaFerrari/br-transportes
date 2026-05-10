@@ -144,8 +144,8 @@ const ITEMS: Item[] = [
   {
     id: 19,
     title: 'Minutas — Integração com formato Excel atual',
-    desc: 'Adaptar o módulo de minutas ao formato Excel que a equipe já utiliza atualmente. Aguardando envio do modelo pelo cliente.',
-    status: 'pending',
+    desc: 'Campo Marca adicionado à minuta. Colunas Endereço e Embarque nos volumes (igual ao modelo BKP_MINUTA). Exportação Excel (.xlsx) fiel ao template: cabeçalho verde, grade QTDE/ITEM/MEDIDAS/ENDEREÇO/EMBARQUE, totais e aba DECLARAÇÃO. Impressão HTML reformulada no mesmo layout.',
+    status: 'done',
     tag: 'Minutas',
   },
 ];

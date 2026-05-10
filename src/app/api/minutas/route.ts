@@ -89,6 +89,7 @@ export async function POST(req: NextRequest) {
     const motorista = String(body?.motorista || '').trim() || null;
     const pedido = String(body?.pedido || '').trim() || null;
     const coletador = String(body?.coletador || '').trim() || null;
+    const marca = String(body?.marca || '').trim() || null;
     const dataColeta = body?.dataColeta ? new Date(String(body.dataColeta)) : null;
 
     if (!nfNumero) return json({ ok: false, error: 'Informe NF' }, 400);
@@ -106,6 +107,7 @@ export async function POST(req: NextRequest) {
         motorista,
         pedido,
         coletador,
+        marca,
         dataColeta,
       },
       select: { id: true },

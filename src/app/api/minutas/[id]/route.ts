@@ -67,6 +67,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
     const motorista = String(body?.motorista || '').trim() || null;
     const pedido = String(body?.pedido || '').trim() || null;
     const coletador = String(body?.coletador || '').trim() || null;
+    const marca = String(body?.marca || '').trim() || null;
     const dataColeta = body?.dataColeta ? new Date(String(body.dataColeta)) : null;
 
     if (!nfNumero) return json({ ok: false, error: 'Informe NF' }, 400);
@@ -76,7 +77,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
 
     await minutaDb.update({
       where: { id: minutaId },
-      data: { numero, nfNumero, cliente, cidade, uf, motorista, pedido, coletador, dataColeta },
+      data: { numero, nfNumero, cliente, cidade, uf, motorista, pedido, coletador, marca, dataColeta },
     });
 
     return json({ ok: true }, 200);

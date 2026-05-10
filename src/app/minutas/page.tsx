@@ -13,6 +13,7 @@ type Minuta = {
   motorista?: string | null;
   pedido?: string | null;
   coletador?: string | null;
+  marca?: string | null;
   dataColeta?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -31,6 +32,8 @@ type MinutaVolume = {
   comprimentoCm?: number | null;
   areaM2?: number | null;
   volumeM3?: number | null;
+  endereco?: string | null;
+  embarque?: string | null;
 };
 
 type MinutaItem = {
@@ -66,6 +69,7 @@ export default function MinutasPage() {
       motorista: '',
       pedido: '',
       coletador: '',
+      marca: '',
       dataColeta: '',
     }),
     [],
@@ -168,6 +172,7 @@ export default function MinutasPage() {
         motorista: String(form.motorista || '').trim() || null,
         pedido: String(form.pedido || '').trim() || null,
         coletador: String(form.coletador || '').trim() || null,
+        marca: String(form.marca || '').trim() || null,
         dataColeta: form.dataColeta ? String(form.dataColeta) : null,
       };
 
@@ -226,6 +231,7 @@ export default function MinutasPage() {
         motorista: m.motorista ?? '',
         pedido: m.pedido ?? '',
         coletador: m.coletador ?? '',
+        marca: m.marca ?? '',
         dataColeta: m.dataColeta ? String(m.dataColeta).slice(0, 10) : '',
       });
 
@@ -377,6 +383,20 @@ export default function MinutasPage() {
               }}
             >
               Imprimir Minuta
+            </button>
+            <button
+              onClick={() => window.open(`/api/minutas/${editingId}/excel`, '_blank')}
+              style={{
+                padding: '8px 12px',
+                borderRadius: 8,
+                background: '#15803d',
+                color: '#fff',
+                border: 'none',
+                fontWeight: 900,
+                cursor: 'pointer',
+              }}
+            >
+              Exportar Excel
             </button>
             <button
               onClick={() => window.open(`/api/minutas/${editingId}/etiquetas`, '_blank')}
@@ -539,6 +559,10 @@ export default function MinutasPage() {
             <input value={String(form.coletador ?? '')} onChange={(e) => setForm({ ...form, coletador: e.target.value })} style={inputStyle} placeholder="Nome do coletador" />
           </label>
           <label>
+            <div style={{ marginBottom: 4 }}>Marca (opcional)</div>
+            <input value={String(form.marca ?? '')} onChange={(e) => setForm({ ...form, marca: e.target.value })} style={inputStyle} placeholder="Ex: BALDAN" />
+          </label>
+          <label>
             <div style={{ marginBottom: 4 }}>Data da Coleta (opcional)</div>
             <input type="date" value={String(form.dataColeta ?? '')} onChange={(e) => setForm({ ...form, dataColeta: e.target.value })} style={inputStyle} />
           </label>
@@ -649,31 +673,29 @@ export default function MinutasPage() {
                       <thead>
                         <tr>
                           <th style={th}>Etiqueta</th>
-                          <th style={th}>Tipo</th>
-                          <th style={th}>Código</th>
                           <th style={th}>Descrição</th>
+                          <th style={th}>Medidas (cm)</th>
                           <th style={th}>Peso (kg)</th>
-                          <th style={th}>Área (m²)</th>
-                          <th style={th}>Dimensões (cm)</th>
-                          <th style={th}>Volume (m³)</th>
+                          <th style={th}>Endereço</th>
+                          <th style={th}>Embarque</th>
+                          <th style={th}>M³</th>
                         </tr>
                       </thead>
                       <tbody>
                         {allVols.map((v) => (
                           <tr key={v.id}>
                             <td style={td}><code>{v.etiqueta}</code></td>
-                            <td style={td}>{v.tipo}</td>
-                            <td style={td}>{v.codigo}</td>
                             <td style={td}>{v.descricao}</td>
-                            <td style={tdNum}>{v.pesoKg != null ? Number(v.pesoKg).toFixed(2) : '-'}</td>
-                            <td style={tdNum}>{v.areaM2 != null ? Number(v.areaM2).toFixed(2) : '-'}</td>
                             <td style={tdNum}>{v.alturaCm ?? '-'} x {v.larguraCm ?? '-'} x {v.comprimentoCm ?? '-'}</td>
+                            <td style={tdNum}>{v.pesoKg != null ? Number(v.pesoKg).toFixed(2) : '-'}</td>
+                            <td style={td}>{v.endereco ?? '-'}</td>
+                            <td style={td}>{v.embarque ?? '-'}</td>
                             <td style={tdNum}>{v.volumeM3 != null ? Number(v.volumeM3).toFixed(4) : '-'}</td>
                           </tr>
                         ))}
                         {totalVolumes === 0 && (
                           <tr>
-                            <td style={td} colSpan={8}>(Sem volumes)</td>
+                            <td style={td} colSpan={7}>(Sem volumes)</td>
                           </tr>
                         )}
                       </tbody>
