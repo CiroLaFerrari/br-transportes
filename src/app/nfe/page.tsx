@@ -1,10 +1,11 @@
 'use client';
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 
 // ── Tipos ───────────────────────────────────────────────────────────────────
 
 type Step = 'input' | 'loading' | 'preview' | 'confirming' | 'success';
+type Tab  = 'chave' | 'pdf';
 
 interface ItemPreview {
   nItem: number;
@@ -24,6 +25,7 @@ interface PreviewPayload {
     serie: string;
     dhEmi: string;
     isMock: boolean;
+    fonte?: string;
     emitente: { cnpj: string; razaoSocial: string; cidade: string; uf: string };
     destinatario?: { razaoSocial?: string; cidade: string; uf: string };
     vNF: number;
@@ -102,17 +104,22 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 // ── Página principal ────────────────────────────────────────────────────────
 
 export default function ImportarNFePage() {
-  const [step, setStep]           = useState<Step>('input');
-  const [chave, setChave]         = useState('');
-  const [data, setData]           = useState<PreviewPayload | null>(null);
-  const [success, setSuccess]     = useState<SuccessPayload | null>(null);
-  const [error, setError]         = useState('');
-  const inputRef                  = useRef<HTMLInputElement>(null);
+  const [step, setStep]         = useState<Step>('input');
+  const [tab, setTab]           = useState<Tab>('pdf');
+  const [chave, setChave]       = useState('');
+  const [pdfFile, setPdfFile]   = useState<File | null>(null);
+  const [isDragging, setDragging] = useState(false);
+  const [data, setData]         = useState<PreviewPayload | null>(null);
+  const [success, setSuccess]   = useState<SuccessPayload | null>(null);
+  const [error, setError]       = useState('');
+  const inputRef                = useRef<HTMLInputElement>(null);
+  const fileInputRef            = useRef<HTMLInputElement>(null);
 
-  const digits = chave.replace(/\D/g, '');
-  const isValid = digits.length === 44;
+  const digits   = chave.replace(/\D/g, '');
+  const isValid  = digits.length === 44;
+  const canSubmit = tab === 'chave' ? isValid : !!pdfFile;
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
+  // ── Handlers: chave ─────────────────────────────────────────────────────
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     setChave(formatChaveDisplay(e.target.value));
@@ -121,23 +128,59 @@ export default function ImportarNFePage() {
 
   function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
     e.preventDefault();
-    const pasted = e.clipboardData.getData('text');
-    setChave(formatChaveDisplay(pasted));
+    setChave(formatChaveDisplay(e.clipboardData.getData('text')));
     setError('');
   }
 
+  // ── Handlers: PDF drag & drop ────────────────────────────────────────────
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const f = e.dataTransfer.files[0];
+    if (f && f.name.toLowerCase().endsWith('.pdf')) {
+      setPdfFile(f);
+      setError('');
+    } else {
+      setError('Apenas arquivos PDF são aceitos.');
+    }
+  }, []);
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) { setPdfFile(f); setError(''); }
+  };
+
+  // ── Handler principal: consultar / processar ─────────────────────────────
+
   async function handleConsultar() {
-    if (!isValid) { setError('A chave deve ter exatamente 44 dígitos.'); return; }
+    if (!canSubmit) return;
     setStep('loading');
     setError('');
+
     try {
-      const res  = await fetch('/api/nfe/consultar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chave: digits }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Erro ao consultar.');
+      let json: any;
+
+      if (tab === 'chave') {
+        // Consulta por chave (mock ou API real)
+        if (!isValid) throw new Error('A chave deve ter exatamente 44 dígitos.');
+        const res = await fetch('/api/nfe/consultar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chave: digits }),
+        });
+        json = await res.json();
+        if (!res.ok) throw new Error(json.error ?? 'Erro ao consultar.');
+      } else {
+        // Upload de PDF
+        if (!pdfFile) throw new Error('Selecione um arquivo PDF.');
+        const fd = new FormData();
+        fd.append('file', pdfFile);
+        const res = await fetch('/api/nfe/pdf', { method: 'POST', body: fd });
+        json = await res.json();
+        if (!res.ok) throw new Error(json.error ?? 'Erro ao processar PDF.');
+      }
+
       setData(json);
       setStep('preview');
     } catch (e: any) {
@@ -169,6 +212,7 @@ export default function ImportarNFePage() {
 
   function handleNova() {
     setChave('');
+    setPdfFile(null);
     setData(null);
     setSuccess(null);
     setError('');
@@ -187,53 +231,155 @@ export default function ImportarNFePage() {
           📄 Importar Nota Fiscal Eletrônica
         </h1>
         <p style={{ margin: '6px 0 0', color: '#6b7280', fontSize: 14 }}>
-          Cole a chave de acesso (44 dígitos) para cadastrar a coleta automaticamente.
+          Importe o DANFE em PDF ou cole a chave de acesso para cadastrar a coleta automaticamente.
         </p>
       </div>
 
       {/* ── STEP: INPUT ───────────────────────────────────────────────────── */}
       {(step === 'input' || step === 'loading') && (
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 32, boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-          <div style={{ marginBottom: 6, fontWeight: 600, color: '#374151', fontSize: 14 }}>
-            Chave de Acesso
-          </div>
-          <input
-            ref={inputRef}
-            value={chave}
-            onChange={handleChange}
-            onPaste={handlePaste}
-            placeholder="3524 0312 3456 7800 0195 5500 1000 0001 2340 0001 2345"
-            disabled={step === 'loading'}
-            onKeyDown={(e) => e.key === 'Enter' && handleConsultar()}
-            style={{
-              width: '100%', boxSizing: 'border-box',
-              padding: '12px 16px', borderRadius: 8,
-              border: `2px solid ${error ? '#fca5a5' : isValid ? '#86efac' : '#d1d5db'}`,
-              fontSize: 14, fontFamily: 'monospace', letterSpacing: 1,
-              color: '#111827', background: step === 'loading' ? '#f9fafb' : '#fff',
-              outline: 'none', transition: 'border-color .15s',
-            }}
-          />
 
-          {/* Contador de dígitos */}
-          <div style={{ marginTop: 6, fontSize: 12, color: digits.length === 44 ? '#16a34a' : '#9ca3af', textAlign: 'right' }}>
-            {digits.length}/44 dígitos {digits.length === 44 && '✓'}
+          {/* Tabs */}
+          <div style={{ display: 'flex', gap: 0, marginBottom: 28, borderBottom: '2px solid #e5e7eb' }}>
+            {([
+              { key: 'pdf',   label: '📎 Upload PDF',       hint: 'Recomendado' },
+              { key: 'chave', label: '🔢 Chave de acesso',  hint: ''  },
+            ] as { key: Tab; label: string; hint: string }[]).map((t) => (
+              <button
+                key={t.key}
+                onClick={() => { setTab(t.key); setError(''); }}
+                style={{
+                  padding: '10px 20px', background: 'none', border: 'none',
+                  borderBottom: tab === t.key ? '2px solid #1A4A1A' : '2px solid transparent',
+                  marginBottom: -2,
+                  color: tab === t.key ? '#1A4A1A' : '#6b7280',
+                  fontWeight: tab === t.key ? 700 : 500,
+                  fontSize: 14, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  transition: 'all .15s',
+                }}
+              >
+                {t.label}
+                {t.hint && (
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', background: '#dcfce7', color: '#166534', borderRadius: 999 }}>
+                    {t.hint}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
 
+          {/* ── Tab: Upload PDF ─────────────────────────────────────────── */}
+          {tab === 'pdf' && (
+            <>
+              {/* Drop zone */}
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  border: `2px dashed ${isDragging ? '#1A4A1A' : pdfFile ? '#86efac' : '#d1d5db'}`,
+                  borderRadius: 10,
+                  padding: '36px 24px',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  background: isDragging ? '#f0fdf4' : pdfFile ? '#f0fdf4' : '#fafafa',
+                  transition: 'all .15s',
+                  marginBottom: 16,
+                }}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf"
+                  style={{ display: 'none' }}
+                  onChange={handleFileInput}
+                />
+
+                {pdfFile ? (
+                  <>
+                    <div style={{ fontSize: 40, marginBottom: 8 }}>📄</div>
+                    <div style={{ fontWeight: 700, color: '#166534', fontSize: 15 }}>{pdfFile.name}</div>
+                    <div style={{ color: '#6b7280', fontSize: 13, marginTop: 4 }}>
+                      {(pdfFile.size / 1024).toFixed(0)} KB &nbsp;·&nbsp;
+                      <span style={{ color: '#1A4A1A', textDecoration: 'underline' }}>Trocar arquivo</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 40, marginBottom: 8 }}>📎</div>
+                    <div style={{ fontWeight: 600, color: '#374151', fontSize: 15 }}>
+                      Arraste o DANFE (PDF) aqui
+                    </div>
+                    <div style={{ color: '#9ca3af', fontSize: 13, marginTop: 4 }}>
+                      ou <span style={{ color: '#1A4A1A', textDecoration: 'underline' }}>clique para selecionar</span>
+                    </div>
+                    <div style={{ color: '#9ca3af', fontSize: 12, marginTop: 8 }}>
+                      Aceita o PDF do DANFE enviado pelo cliente
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Dica */}
+              <div style={{ padding: '10px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 13, color: '#374151', marginBottom: 20 }}>
+                💡 <strong>Como usar:</strong> Abra o PDF da NF que o cliente enviou e arraste aqui. O sistema extrai todos os dados automaticamente — cliente, produtos, valores e peso.
+              </div>
+            </>
+          )}
+
+          {/* ── Tab: Chave de acesso ─────────────────────────────────── */}
+          {tab === 'chave' && (
+            <>
+              <div style={{ marginBottom: 6, fontWeight: 600, color: '#374151', fontSize: 14 }}>
+                Chave de Acesso (44 dígitos)
+              </div>
+              <input
+                ref={inputRef}
+                value={chave}
+                onChange={handleChange}
+                onPaste={handlePaste}
+                placeholder="3524 0312 3456 7800 0195 5500 1000 0001 2340 0001 2345"
+                disabled={step === 'loading'}
+                onKeyDown={(e) => e.key === 'Enter' && handleConsultar()}
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  padding: '12px 16px', borderRadius: 8,
+                  border: `2px solid ${error ? '#fca5a5' : isValid ? '#86efac' : '#d1d5db'}`,
+                  fontSize: 14, fontFamily: 'monospace', letterSpacing: 1,
+                  color: '#111827', background: step === 'loading' ? '#f9fafb' : '#fff',
+                  outline: 'none', transition: 'border-color .15s',
+                }}
+              />
+              <div style={{ marginTop: 6, fontSize: 12, color: digits.length === 44 ? '#16a34a' : '#9ca3af', textAlign: 'right' }}>
+                {digits.length}/44 dígitos {digits.length === 44 && '✓'}
+              </div>
+
+              {/* Dica */}
+              <div style={{ marginTop: 14, padding: '10px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 13, color: '#374151', marginBottom: 6 }}>
+                💡 A chave fica impressa no DANFE (linha longa de números abaixo do código de barras). <strong>Atenção:</strong> sem API configurada os dados dos itens são simulados — prefira usar o Upload PDF.
+              </div>
+            </>
+          )}
+
+          {/* Erro */}
           {error && (
-            <div style={{ marginTop: 8, padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, color: '#dc2626', fontSize: 13 }}>
+            <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, color: '#dc2626', fontSize: 13 }}>
               ⚠️ {error}
             </div>
           )}
 
+          {/* Botão */}
           <button
             onClick={handleConsultar}
-            disabled={!isValid || step === 'loading'}
+            disabled={!canSubmit || step === 'loading'}
             style={{
-              marginTop: 20, width: '100%', padding: '12px',
-              background: isValid && step !== 'loading' ? 'linear-gradient(135deg, #1A4A1A, #2d6a2d)' : '#d1d5db',
+              width: '100%', padding: '13px',
+              background: canSubmit && step !== 'loading' ? 'linear-gradient(135deg, #1A4A1A, #2d6a2d)' : '#d1d5db',
               color: '#fff', border: 'none', borderRadius: 8,
-              fontSize: 15, fontWeight: 700, cursor: isValid && step !== 'loading' ? 'pointer' : 'not-allowed',
+              fontSize: 15, fontWeight: 700,
+              cursor: canSubmit && step !== 'loading' ? 'pointer' : 'not-allowed',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               transition: 'all .15s',
             }}
@@ -241,24 +387,12 @@ export default function ImportarNFePage() {
             {step === 'loading' ? (
               <>
                 <span style={{ display: 'inline-block', width: 16, height: 16, border: '2px solid rgba(255,255,255,.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-                Consultando NF-e...
+                {tab === 'pdf' ? 'Lendo PDF...' : 'Consultando NF-e...'}
               </>
             ) : (
-              <>🔍 Consultar NF-e</>
+              tab === 'pdf' ? '📄 Importar PDF' : '🔍 Consultar NF-e'
             )}
           </button>
-
-          {/* Dica */}
-          <div style={{ marginTop: 20, padding: '12px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8 }}>
-            <div style={{ fontWeight: 600, color: '#166534', fontSize: 13, marginBottom: 4 }}>
-              💡 Onde encontro a chave de acesso?
-            </div>
-            <ul style={{ margin: 0, padding: '0 0 0 18px', color: '#374151', fontSize: 13, lineHeight: 1.7 }}>
-              <li>No DANFE impresso (linha de código de barras ou texto acima do código)</li>
-              <li>No XML da NF-e (campo <code style={{ fontSize: 12 }}>chNFe</code>)</li>
-              <li>Nos sites <strong>consultadanfe.com</strong> ou <strong>meudanfe.com.br</strong> após o scan</li>
-            </ul>
-          </div>
 
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
@@ -278,8 +412,21 @@ export default function ImportarNFePage() {
               <span style={{ fontSize: 16 }}>⚠️</span>
               <span>
                 <strong>Modo demonstração</strong> — os dados dos itens são simulados.
-                Quando um provedor real for configurado, essa nota retornará os dados reais da NF-e.
+                Use o <strong>Upload PDF</strong> para importar os dados reais da nota.
               </span>
+            </div>
+          )}
+
+          {/* Banner PDF real */}
+          {data.nfe.fonte === 'pdf' && (
+            <div style={{
+              marginBottom: 16, padding: '10px 16px',
+              background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8,
+              color: '#166534', fontSize: 13, fontWeight: 500,
+              display: 'flex', gap: 8, alignItems: 'flex-start',
+            }}>
+              <span style={{ fontSize: 16 }}>✅</span>
+              <span><strong>Dados lidos do DANFE</strong> — informações extraídas diretamente do PDF da nota fiscal.</span>
             </div>
           )}
 
@@ -385,7 +532,7 @@ export default function ImportarNFePage() {
               </div>
             </Section>
 
-            {/* Resumo do que será criado */}
+            {/* Resumo */}
             <div style={{
               background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8,
               padding: '14px 18px', marginBottom: 24,
@@ -396,7 +543,7 @@ export default function ImportarNFePage() {
               <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
                 {[
                   { label: 'Coleta', value: '1 nova', warn: !!data.preview.coletaExistente },
-                  { label: 'Cliente', value: data.preview.clienteExistente ? `Existente (${data.preview.clienteExistente.razao.slice(0, 20)}...)` : '1 novo' },
+                  { label: 'Cliente', value: data.preview.clienteExistente ? `Existente` : '1 novo' },
                   { label: 'Produtos novos', value: String(data.preview.novosProdutos) },
                   { label: 'Itens criados', value: String(data.preview.totalItens) },
                 ].map((r) => (
@@ -408,7 +555,7 @@ export default function ImportarNFePage() {
               </div>
             </div>
 
-            {/* Erro de confirmação */}
+            {/* Erro */}
             {error && (
               <div style={{ marginBottom: 16, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, color: '#dc2626', fontSize: 13 }}>
                 ⚠️ {error}
@@ -467,7 +614,6 @@ export default function ImportarNFePage() {
             {success.itensCriados} {success.itensCriados === 1 ? 'item criado' : 'itens criados'}
             {success.produtosCriados > 0 && ` · ${success.produtosCriados} produto${success.produtosCriados !== 1 ? 's' : ''} novo${success.produtosCriados !== 1 ? 's' : ''} cadastrado${success.produtosCriados !== 1 ? 's' : ''}`}
           </div>
-
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
             <Link
               href={`/coletas`}
