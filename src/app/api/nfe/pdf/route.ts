@@ -1,15 +1,30 @@
 // src/app/api/nfe/pdf/route.ts
 // POST multipart/form-data { file: PDF }
-// Extrai dados do DANFE e retorna o mesmo formato de /api/nfe/consultar
+// Extrai dados do DANFE usando pdfjs-dist e retorna o mesmo formato de /api/nfe/consultar
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+// ── Extração de texto via pdfjs-dist ────────────────────────────────────────
+
+async function extractText(buffer: Buffer): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js') as any;
+  const data = new Uint8Array(buffer);
+  const doc  = await pdfjsLib.getDocument({ data }).promise;
+  const parts: string[] = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page    = await doc.getPage(i);
+    const content = await page.getTextContent();
+    parts.push(content.items.map((x: any) => String(x.str ?? '')).join(' '));
+  }
+  return parts.join('\n');
+}
+
 // ── Parser DANFE ────────────────────────────────────────────────────────────
 
 function cleanNum(s: string): number {
-  // "20.581,76" → 20581.76
-  return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
+  return parseFloat(String(s).replace(/\./g, '').replace(',', '.')) || 0;
 }
 
 function fmtCnpj(raw: string): string {
@@ -19,244 +34,238 @@ function fmtCnpj(raw: string): string {
 }
 
 interface ParsedItem {
-  nItem: number;
-  cProd: string;
-  xProd: string;
-  qCom: number;
-  uCom: string;
-  vProd: number;
-  pesoLiq?: number;
+  nItem: number; cProd: string; xProd: string;
+  qCom: number; uCom: string; vProd: number; pesoLiq?: number;
 }
 
 interface ParsedNFe {
-  chave: string;
-  nNF: string;
-  serie: string;
-  dhEmi: string;
+  chave: string; nNF: string; serie: string; dhEmi: string;
   emitente: { cnpj: string; razaoSocial: string; cidade: string; uf: string };
   destinatario?: { razaoSocial: string; cnpj: string; cidade: string; uf: string };
-  vNF: number;
-  pesoTotal?: number;
-  itens: ParsedItem[];
+  vNF: number; pesoTotal?: number; itens: ParsedItem[];
 }
 
-function parseDanfe(raw: string): ParsedNFe {
-  // Normalize
-  const text = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const flat = text.replace(/\s+/g, ' ');
-
-  // ── 1. Chave de acesso (44 dígitos contíguos) ──────────────────────────
-  const chaveMatch = flat.replace(/\s/g, '').match(/\d{44}/);
-  if (!chaveMatch) throw new Error('Chave de acesso (44 dígitos) não encontrada no PDF.');
+function parseDanfe(text: string): ParsedNFe {
+  // ── 1. Chave de acesso ────────────────────────────────────────────────
+  // Remove todos os espaços e procura sequência de 44 dígitos
+  const noSpaces = text.replace(/\s+/g, '');
+  const chaveMatch = noSpaces.match(/\d{44}/);
+  if (!chaveMatch) throw new Error('Chave de acesso não encontrada no PDF. Verifique se o arquivo é um DANFE válido.');
   const chave = chaveMatch[0];
 
-  // Decompõe a chave
-  const aamm   = chave.slice(2, 6);
+  // Decompõe a chave DANFE: UF(2) AAMM(4) CNPJ(14) MOD(2) SERIE(3) NNF(9) TPEMIS(1) CNUMERO(8) CDV(1)
+  const aamm        = chave.slice(2, 6);
   const cnpjEmitRaw = chave.slice(6, 20);
-  const serie  = chave.slice(22, 25).replace(/^0+/, '') || '1';
-  const nNF    = String(parseInt(chave.slice(25, 34), 10));
-  const ano    = '20' + aamm.slice(0, 2);
-  const mes    = aamm.slice(2, 4);
+  const serie       = String(parseInt(chave.slice(22, 25), 10)) || '1';
+  const nNF         = String(parseInt(chave.slice(25, 34), 10));
+  const ano         = '20' + aamm.slice(0, 2);
+  const mes         = aamm.slice(2, 4);
 
-  // ── 2. Data de emissão (dd/mm/aaaa no texto) ──────────────────────────
-  const dateMatches = [...text.matchAll(/(\d{2})\/(\d{2})\/(\d{4})/g)].map((m) => ({
-    raw: m[0], d: m[1], mo: m[2], y: m[3],
-  }));
-  // Pega a primeira data do ano atual ou próximo (emissão)
-  const dateEmissao = dateMatches.find((d) => d.y === ano || d.y === String(Number(ano) + 1));
-  const dhEmi = dateEmissao
-    ? `${dateEmissao.y}-${dateEmissao.mo}-${dateEmissao.d}T00:00:00`
+  // ── 2. Data de emissão ────────────────────────────────────────────────
+  const dates = [...text.matchAll(/(\d{2})\/(\d{2})\/(\d{4})/g)];
+  const emissaoDate = dates.find((m) => m[3] === ano || m[3] === String(Number(ano) + 1));
+  const dhEmi = emissaoDate
+    ? `${emissaoDate[3]}-${emissaoDate[2]}-${emissaoDate[1]}T00:00:00`
     : `${ano}-${mes}-01T00:00:00`;
 
   // ── 3. CNPJs no texto ─────────────────────────────────────────────────
-  const cnpjsTexto = [...text.matchAll(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g)].map((m) => m[0]);
-  const cnpjsUniq  = [...new Set(cnpjsTexto)];
+  const cnpjsAll  = [...text.matchAll(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g)].map((m) => m[0]);
+  const cnpjEmit  = fmtCnpj(cnpjEmitRaw);
+  const cnpjDest  = cnpjsAll.find((c) => c.replace(/\D/g, '') !== cnpjEmitRaw) ?? '';
 
-  // Emitente: CNPJ da chave
-  const cnpjEmit = fmtCnpj(cnpjEmitRaw);
-  // Destinatário: primeiro CNPJ diferente do emitente
-  const cnpjDest = cnpjsUniq.find((c) => c.replace(/\D/g, '') !== cnpjEmitRaw) ?? '';
+  // ── 4. Razão social do emitente ───────────────────────────────────────
+  // pdfjs extrai o texto em ordem visual — o nome do emitente aparece logo após
+  // "Recebemos de X os produtos..." ou logo antes/depois do CNPJ do emitente
+  let razaoEmit = '';
+  // Padrão: "Recebemos de [NOME] os produtos"
+  const recebemosMatch = text.match(/Recebemos de\s+(.+?)\s+os produtos/i);
+  if (recebemosMatch) razaoEmit = recebemosMatch[1].trim();
 
-  // ── 4. Razões Sociais ─────────────────────────────────────────────────
-  // Estratégia: procura o nome imediatamente antes/depois das labels EMITENTE/DESTINATÁRIO
-  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-
-  function getNameNearLabel(label: RegExp): string {
-    for (let i = 0; i < lines.length; i++) {
-      if (label.test(lines[i])) {
-        // Procura linha não-vazia seguinte que não seja um label conhecido
-        for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
-          const l = lines[j];
-          if (l && !/^(CNPJ|CPF|IE|IM|FONE|TEL|RUA|AV|ROD|END|CEP|BAIRRO|NATUREZA|DATA|EMITENTE|DESTINAT)/i.test(l)) {
-            // Tem aspecto de nome (≥ 5 chars, não começa com número)
-            if (l.length >= 5 && !/^\d/.test(l)) return l;
-          }
-        }
-      }
+  // Fallback: nome depois do CNPJ emitente no texto
+  if (!razaoEmit && cnpjEmit) {
+    const idxCnpj = text.indexOf(cnpjEmit);
+    if (idxCnpj >= 0) {
+      const after = text.slice(idxCnpj + cnpjEmit.length, idxCnpj + cnpjEmit.length + 200);
+      const parts = after.trim().split(/\s{2,}|\n/).map((s) => s.trim()).filter(Boolean);
+      const candidate = parts.find(
+        (p) => p.length > 5 && !/^(\d|CNPJ|CPF|IE|IM|FONE|CEP|RUA|AV|ROD)/.test(p),
+      );
+      if (candidate) razaoEmit = candidate;
     }
-    return '';
+  }
+  razaoEmit = razaoEmit || 'Emitente';
+
+  // ── 5. Razão social do destinatário ──────────────────────────────────
+  // Aparece após "NOME / RAZÃO SOCIAL" na seção destinatário
+  let razaoDest = '';
+  const nomeLabelIdx = text.lastIndexOf('NOME / RAZÃO SOCIAL');
+  if (nomeLabelIdx >= 0) {
+    const after = text.slice(nomeLabelIdx + 20, nomeLabelIdx + 200);
+    const parts = after.trim().split(/\n|\s{3,}/).map((s) => s.trim()).filter(Boolean);
+    const candidate = parts.find(
+      (p) => p.length > 5 && !/^(NOME|DATA|CNPJ|CPF|CEP|UF|END|RUA|ROD|AV|BAIRRO|FONE|IE)/.test(p),
+    );
+    if (candidate) razaoDest = candidate;
   }
 
-  // Também tenta extração pelo CNPJ: nome = linha imediatamente antes do CNPJ
-  function getNameByCnpj(cnpj: string): string {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(cnpj)) {
-        // Linha anterior pode ser o nome
-        for (let j = i - 1; j >= Math.max(0, i - 4); j--) {
-          const l = lines[j];
-          if (l && l.length >= 5 && !/^\d/.test(l) && !/^(EMITENTE|DESTINAT|CNPJ|CPF|FONE|CEP)/i.test(l)) {
-            return l;
-          }
-        }
-        // Ou linha posterior
-        for (let j = i + 1; j < Math.min(lines.length, i + 4); j++) {
-          const l = lines[j];
-          if (l && l.length >= 5 && !/^\d/.test(l) && !/^(CNPJ|CPF|IE|IM|FONE|RUA|AV|ROD)/i.test(l)) {
-            return l;
-          }
-        }
-      }
-    }
-    return '';
+  // ── 6. Cidade/UF do emitente ──────────────────────────────────────────
+  // Padrão "Pompeia - SP" ou "CIDADE  UF  BA"
+  const cityUfRe = /([A-ZÁÇÃÕÉÀÊÎ][A-ZÁÇÃÕÉÀÊÎa-záçãõéàêî\s]{2,30})\s*-\s*([A-Z]{2})\b/g;
+  const cityUfs  = [...text.matchAll(cityUfRe)]
+    .map((m) => ({ city: m[1].trim(), uf: m[2] }))
+    .filter((c) => c.city.length > 2 && !/^\d/.test(c.city) && !/^(ROD|BR|SP\s*\d|CEP)/.test(c.city));
+
+  const cidadeEmit = cityUfs[0]?.city ?? '';
+  const ufEmit     = cityUfs[0]?.uf  ?? chave.slice(0, 2);
+
+  // Destinatário — cidade e UF
+  // Geralmente "MUNICÍPIO  JUAZEIRO  UF  BA"
+  let cidadeDest = '', ufDest = '';
+  const municipioMatch = text.match(/MUNIC[IÍ]PIO\s+([A-ZÁÇÃÕÉÀÊÎ][^\n\t]+?)\s+UF\s+([A-Z]{2})/i);
+  if (municipioMatch) {
+    cidadeDest = municipioMatch[1].trim();
+    ufDest     = municipioMatch[2].trim();
+  } else if (cityUfs[1]) {
+    cidadeDest = cityUfs[1].city;
+    ufDest     = cityUfs[1].uf;
   }
 
-  const razaoEmit = getNameNearLabel(/EMITENTE/i) || getNameByCnpj(cnpjEmit) || 'Emitente';
-  const razaoDest = getNameNearLabel(/DESTINAT/i) || getNameByCnpj(cnpjDest) || '';
+  // ── 7. Peso total ─────────────────────────────────────────────────────
+  const pesoMatch = text.match(/PESO\s+BRUTO\s+([\d.,]+)\s*KG/i);
+  const pesoTotal = pesoMatch ? cleanNum(pesoMatch[1]) : undefined;
 
-  // ── 5. Cidade/UF do emitente e destinatário ───────────────────────────
-  // Padrão: "CIDADE - SP", "CIDADE/SP", "CIDADE / SP"
-  const cityUfRe = /([A-ZÁÇÃÕÉÀÊÎ][A-ZÁÇÃÕÉÀÊÎa-záçãõéàêî\s]{2,40})\s*[-\/]\s*([A-Z]{2})\b/g;
-  const cityUfs = [...text.matchAll(cityUfRe)].map((m) => ({ city: m[1].trim(), uf: m[2] }));
-
-  // Remove matches genéricos (SP 318 etc.)
-  const validCityUfs = cityUfs.filter(
-    (c) => !/^\d/.test(c.city) && c.city.length > 2 && !/^(ROD|BR|SP|RJ|RS|PR|MG|BA)\s*\d/i.test(c.city),
-  );
-
-  const cidadeEmit = validCityUfs[0]?.city ?? '';
-  const ufEmit     = validCityUfs[0]?.uf  ?? chave.slice(0, 2);
-  const cidadeDest = validCityUfs[1]?.city ?? '';
-  const ufDest     = validCityUfs[1]?.uf  ?? '';
-
-  // ── 6. Peso total ─────────────────────────────────────────────────────
-  const pesoMatches = [...text.matchAll(/(\d+[\.,]\d+)\s*KG/gi)];
-  const pesos = pesoMatches.map((m) => cleanNum(m[1])).filter((n) => n > 0);
-  const pesoTotal = pesos.length > 0 ? Math.max(...pesos) : undefined;
-
-  // ── 7. Valor total da NF ──────────────────────────────────────────────
-  // "VALOR TOTAL DA NOTA" ou "TOTAL R$" etc.
+  // ── 8. Valor total da nota ────────────────────────────────────────────
   let vNF = 0;
-  const totalRe = /(?:VALOR\s+TOTAL\s+(?:DA\s+)?NOTA|TOTAL\s+DA\s+NOTA)[^\d]*(\d[\d.,]+)/i;
-  const totalMatch = text.match(totalRe);
-  if (totalMatch) {
-    vNF = cleanNum(totalMatch[1]);
-  } else {
-    // Fallback: maior valor monetário no documento
-    const moneyMatches = [...text.matchAll(/R\$\s*([\d.,]+)/g)].map((m) => cleanNum(m[1]));
-    if (moneyMatches.length) vNF = Math.max(...moneyMatches);
+  const totalMatch = text.match(/VALOR\s+TOTAL\s+DA\s+NOTA\s+([\d.,]+)/i);
+  if (totalMatch) vNF = cleanNum(totalMatch[1]);
+  if (!vNF) {
+    // Fallback: maior valor em reais no documento
+    const moneys = [...text.matchAll(/R\$\s*([\d.,]+)/g)].map((m) => cleanNum(m[1]));
+    if (moneys.length) vNF = Math.max(...moneys);
   }
 
-  // ── 8. Itens / Produtos ────────────────────────────────────────────────
+  // ── 9. Produtos ───────────────────────────────────────────────────────
   const itens: ParsedItem[] = [];
 
-  // Encontra seção de produtos: entre "CÓDIGO" header e "CÁLCULO"/"FATURA"/"TOTAIS"
-  const prodSecStart = /(CÓDIGO\s+DESCRI[CÇ]ÃO|COD\.\s+DESC|DISCRIMIN)/i;
-  const prodSecEnd   = /(CÁLCULO\s+DO\s+IMPOSTO|FATURA|DUPLICATA|TRANSPORTADOR|DADOS\s+DO\s+TRANSPORT)/i;
+  // Estratégia principal: extrai produtos da seção "DADOS DOS PRODUTOS / SERVIÇOS"
+  // O pdfjs retorna o texto de forma contínua. Procura o bloco entre o header de
+  // produtos e INFORMAÇÕES COMPLEMENTARES / CÁLCULO DO IMPOSTO
+  const prodStart = text.search(/DADOS\s+DOS\s+PRODUTOS|COD[IÍ]GO\s+PRODUTO\s+DESCRI/i);
+  const prodEnd   = text.search(/INFORMA[ÇC][ÕO]ES\s+COMPLEMENTARES|RESERVADO\s+AO\s+FISCO|CÁLCULO\s+DO\s+IMPOSTO/i);
 
-  const startIdx = lines.findIndex((l) => prodSecStart.test(l));
-  const endIdx   = lines.findIndex((l, i) => i > startIdx + 1 && prodSecEnd.test(l));
+  const prodBlock = prodStart >= 0
+    ? text.slice(prodStart, prodEnd > prodStart ? prodEnd : prodStart + 2000)
+    : '';
 
-  const prodLines = startIdx >= 0
-    ? lines.slice(startIdx + 1, endIdx > 0 ? endIdx : lines.length)
-    : [];
+  if (prodBlock) {
+    // Cada produto: [código] [descrição] [info extras] [NCM 8 dígitos] [CST 3 digs] [CFOP 4 digs] [UNID] [qtd] [v.unit] [desc] [0,00] [total] ...
+    // NCM ancora o produto: 8 dígitos consecutivos
+    const ncmRe = /\b(\d{8})\b/g;
+    let ncmMatch: RegExpExecArray | null;
+    const ncmPositions: number[] = [];
+    while ((ncmMatch = ncmRe.exec(prodBlock)) !== null) ncmPositions.push(ncmMatch.index);
 
-  // Padrão de linha de produto DANFE:
-  // CODE  DESCRIPTION  NCM  CST  CFOP  UNIT  QTY  VUNIT  VDESC  VTOTAL
-  // CFOPs começam com 1-9 e têm 4 dígitos (ex: 6101, 5102)
-  // NCM tem 8 dígitos
-  // Quantidade: número com vírgula (ex: 1,0000)
+    for (let pi = 0; pi < ncmPositions.length; pi++) {
+      const pos     = ncmPositions[pi];
+      const nextPos = ncmPositions[pi + 1] ?? prodBlock.length;
 
-  const itemLineRe = /^(\S+)\s+(.+?)\s+(\d{8})\s+\d+\s+([1-9]\d{3})\s+([A-Z]{2,4})\s+([\d.,]+)\s+([\d.,]+)(?:\s+([\d.,]+))?\s*([\d.,]+)$/;
-  // Alternativo mais flexível
-  const itemLineRe2 = /^(\d[\dA-Z\-_.]{2,})\s+(.{8,}?)\s+([1-9]\d{3})\s+([A-Z]{2,4})\s+([\d.,]+)\s+([\d.,]+)(?:\s+[\d.,]+)?\s+([\d.,]+)$/;
+      // Texto antes do NCM = código + descrição
+      // Texto depois do NCM = CST CFOP UNID QTD VUNIT VDESC VTOTAL ...
+      const before = prodBlock.slice(Math.max(0, pos - 600), pos).trim();
+      const after  = prodBlock.slice(pos + 8, nextPos).trim();
 
-  let nItem = 0;
+      // Extrai todos os números do "after"
+      const nums   = [...after.matchAll(/([\d]+[.,][\d]+)/g)].map((m) => cleanNum(m[1]));
+      // Extrai CFOP: 4 dígitos iniciando em 1-9 logo após o NCM
+      const cfopMatch = after.match(/\b([1-9]\d{3})\b/);
+      // Extrai unidade: 2-4 letras maiúsculas
+      const unidMatch = after.match(/\b([A-Z]{2,4})\b/);
 
-  for (const line of prodLines) {
-    const m = itemLineRe.exec(line) ?? itemLineRe2.exec(line);
-    if (m) {
-      nItem++;
-      const cProd = m[1].trim();
-      const xProd = m[2].trim();
-      const qCom  = cleanNum(m[5] ?? m[4]);
-      // last number-like group is total value
-      const groups = m.slice(1).filter(Boolean);
-      const vProd = cleanNum(groups[groups.length - 1]);
+      // Quantidade: primeiro número com vírgula (ex: 1,0000)
+      const qtyMatch  = after.match(/([\d]+,[\d]+)/);
+      const qCom      = qtyMatch ? cleanNum(qtyMatch[1]) : 1;
 
-      itens.push({ nItem, cProd, xProd, qCom: qCom || 1, uCom: 'UN', vProd });
+      // Valor total: geralmente o terceiro ou quarto número de formato "NN.NNN,NN"
+      const realVals = nums.filter((n) => n > 10 && n > qCom);
+      const vProd    = realVals.length > 0 ? realVals[realVals.length - 1] : vNF;
+
+      // Código e descrição do "before"
+      // Tokens do before: separar por espaços múltiplos
+      const beforeTokens = before.split(/\s{2,}|\n/).map((s) => s.trim()).filter(Boolean);
+      // Último token relevante é o código (números), anterior é a descrição
+      // Procura por código: sequência de dígitos/letras sem espaços
+      let cProd = `ITEM-${pi + 1}`;
+      let xProd = '';
+
+      // Estratégia: último token do before que parece código
+      for (let ti = beforeTokens.length - 1; ti >= 0; ti--) {
+        const tok = beforeTokens[ti];
+        if (/^[\dA-Z\-_.\/]{3,}$/.test(tok)) {
+          cProd = tok;
+          xProd = beforeTokens.slice(0, ti).join(' ').trim() ||
+            beforeTokens.slice(ti + 1).join(' ').trim();
+          break;
+        }
+      }
+      if (!xProd) xProd = beforeTokens.filter((t) => t !== cProd).join(' ').trim();
+
+      // Limpa descrição: remove textos de cabeçalho
+      xProd = xProd
+        .replace(/DADOS\s+DOS\s+PRODUTOS[^]*?ALÍQ\.\s*%/i, '')
+        .replace(/COD[IÍ]GO\s+PRODUTO\s+DESCRI[ÇC][AÃ]O[^]*?VALOR\s+TOTAL/i, '')
+        .replace(/CÓDIGO\s+PRODUTO.*/i, '')
+        .trim();
+
+      if (!xProd || xProd.length < 3) xProd = `Produto ${pi + 1}`;
+
+      itens.push({
+        nItem: pi + 1, cProd, xProd,
+        qCom: qCom || 1,
+        uCom: unidMatch?.[1] ?? 'UN',
+        vProd: vProd || vNF,
+      });
     }
   }
 
-  // Se não conseguiu parsear produtos com regex estruturado,
-  // tenta abordagem por NCM (8 dígitos) como âncora
-  if (itens.length === 0) {
-    for (let i = 0; i < prodLines.length; i++) {
-      const line = prodLines[i];
-      // Linha com NCM (8 dígitos)
-      const ncmMatch = line.match(/\b(\d{8})\b/);
-      if (!ncmMatch) continue;
+  // ── 9b. Enriquece com dados de INFORMAÇÕES COMPLEMENTARES ─────────────
+  // Padrão: "PRODUTO:1331979 . MAQUINA NR.:xxx"
+  const infoComp = text.match(/INFORMA[ÇC][ÕO]ES\s+COMPLEMENTARES\s+([\s\S]{0,2000})/i)?.[1] ?? '';
+  const prodCodesInfo = [...infoComp.matchAll(/PRODUTO\s*:\s*(\d+)/gi)].map((m) => m[1]);
 
-      nItem++;
-      // Código: token antes do texto de descrição (pode ser o início da linha)
-      const beforeNcm = line.slice(0, line.indexOf(ncmMatch[0])).trim();
-      // Tenta extrair código e descrição do trecho antes do NCM
-      const tokens = beforeNcm.split(/\s+/);
-      const cProd = tokens[0] ?? `ITEM-${nItem}`;
-      const xProd = tokens.slice(1).join(' ').trim() || `Produto ${nItem}`;
-
-      // Números depois do NCM: CFOP QTD VUNIT VTOTAL
-      const afterNcm = line.slice(line.indexOf(ncmMatch[0]) + 8);
-      const nums = [...afterNcm.matchAll(/([\d]+[.,][\d]+)/g)].map((m) => cleanNum(m[1]));
-      const qCom = nums[nums.length > 2 ? nums.length - 3 : 0] ?? 1;
-      const vProd = nums[nums.length - 1] ?? 0;
-
-      itens.push({ nItem, cProd, xProd, qCom: qCom || 1, uCom: 'UN', vProd });
-    }
-  }
-
-  // Último fallback: produto único pela descrição complementar
-  if (itens.length === 0 && vNF > 0) {
-    // Tenta achar o nome do produto nas linhas de informações complementares
-    const descLine = lines.find(
-      (l) => l.length > 15 && /[A-Z]{4,}/.test(l) && !/^(EMITENTE|DEST|CNPJ|CPF|END|RUA|ROD|FONE|IE|IM|CEP|BAIRRO)/.test(l),
-    );
+  if (itens.length === 0 && prodCodesInfo.length === 0) {
+    // Último fallback: cria 1 item com o que temos
     itens.push({
-      nItem: 1,
-      cProd: nNF,
-      xProd: descLine ?? 'Produto NF ' + nNF,
-      qCom: 1,
-      uCom: 'UN',
-      vProd: vNF,
-      pesoLiq: pesoTotal,
+      nItem: 1, cProd: nNF, xProd: `Produto NF ${nNF}`, qCom: 1, uCom: 'UN', vProd: vNF, pesoLiq: pesoTotal,
     });
   }
 
+  // Aplica os códigos reais das informações complementares
+  for (let i = 0; i < itens.length && i < prodCodesInfo.length; i++) {
+    itens[i].cProd = prodCodesInfo[i];
+  }
+
+  // Também tenta melhorar a descrição pelo bloco após o código nas inf. complementares
+  const descRe = /\|\|?\d+\s*-\s*([^\n|]{10,200})/g;
+  const descMatches = [...infoComp.matchAll(descRe)];
+  for (let i = 0; i < itens.length && i < descMatches.length; i++) {
+    const fullDesc = descMatches[i][1].trim();
+    if (fullDesc.length > itens[i].xProd.length) {
+      // Mantém a primeira parte (nome do produto) como descrição
+      itens[i].xProd = fullDesc.slice(0, fullDesc.indexOf('Reservatorio') > 0 ? fullDesc.indexOf('Reservatorio') : 120).trim();
+    }
+  }
+
   return {
-    chave,
-    nNF,
-    serie,
-    dhEmi,
+    chave, nNF, serie, dhEmi,
     emitente: { cnpj: cnpjEmit, razaoSocial: razaoEmit, cidade: cidadeEmit, uf: ufEmit },
-    destinatario: razaoDest || cidadeDest
+    destinatario: (razaoDest || cidadeDest)
       ? { razaoSocial: razaoDest, cnpj: cnpjDest, cidade: cidadeDest, uf: ufDest }
       : undefined,
-    vNF,
-    pesoTotal,
-    itens,
+    vNF, pesoTotal, itens,
   };
 }
 
-// ── DB cross-reference (igual ao /api/nfe/consultar) ────────────────────────
+// ── DB cross-reference ───────────────────────────────────────────────────────
 
 async function findProduto(cProd: string, xProd: string) {
   const byCode = await prisma.produto.findUnique({
@@ -265,12 +274,7 @@ async function findProduto(cProd: string, xProd: string) {
   });
   if (byCode) return { produto: byCode, matchType: 'código' as const };
 
-  const words = xProd
-    .toUpperCase()
-    .replace(/[^A-Z0-9 ]/g, ' ')
-    .split(' ')
-    .filter((w) => w.length >= 3);
-
+  const words = xProd.toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').split(' ').filter((w) => w.length >= 3);
   if (words.length >= 2) {
     const all = await prisma.produto.findMany({ select: { id: true, code: true, descricao: true } });
     let best: { produto: (typeof all)[0]; score: number } | null = null;
@@ -282,7 +286,6 @@ async function findProduto(cProd: string, xProd: string) {
     }
     if (best) return { produto: best.produto, matchType: 'descrição' as const };
   }
-
   return null;
 }
 
@@ -293,38 +296,31 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file     = formData.get('file') as File | null;
 
-    if (!file) return NextResponse.json({ error: 'Nenhum arquivo enviado.' }, { status: 400 });
+    if (!file)  return NextResponse.json({ error: 'Nenhum arquivo enviado.' }, { status: 400 });
     if (!file.name.toLowerCase().endsWith('.pdf')) {
-      return NextResponse.json({ error: 'O arquivo deve ser um PDF.' }, { status: 400 });
+      return NextResponse.json({ error: 'O arquivo deve ser um PDF (.pdf).' }, { status: 400 });
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // Extrai texto do PDF com pdf-parse
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse: (buf: Buffer) => Promise<{ text: string }> = require('pdf-parse/lib/pdf-parse');
-    const { text } = await pdfParse(buffer);
+    // Extrai texto
+    const text = await extractText(buffer);
 
-    if (!text || text.trim().length < 20) {
+    if (!text || text.trim().length < 30) {
       return NextResponse.json(
-        { error: 'Não foi possível ler texto do PDF. Verifique se o arquivo é um DANFE válido (não pode ser imagem escaneada).' },
+        { error: 'Não foi possível extrair texto do PDF. Verifique se é um DANFE válido (não pode ser imagem escaneada).' },
         { status: 422 },
       );
     }
 
-    // Parseia o DANFE
+    // Parseia DANFE
     const nfe = parseDanfe(text);
 
     // Cross-reference DB
     const [coletaExistente, clienteExistente] = await Promise.all([
       prisma.coleta.findFirst({ where: { nf: nfe.nNF }, select: { id: true, nf: true } }),
       prisma.cliente.findFirst({
-        where: {
-          OR: [
-            { cnpj: nfe.emitente.cnpj },
-            { cnpj: nfe.emitente.cnpj.replace(/\D/g, '') },
-          ],
-        },
+        where: { OR: [{ cnpj: nfe.emitente.cnpj }, { cnpj: nfe.emitente.cnpj.replace(/\D/g, '') }] },
         select: { id: true, razao: true },
       }),
     ]);
@@ -341,16 +337,14 @@ export async function POST(req: NextRequest) {
       }),
     );
 
-    const novosProdutos = itensComStatus.filter((i) => !i.produtoExistente).length;
-
     return NextResponse.json({
       nfe: { ...nfe, itens: itensComStatus, isMock: false, fonte: 'pdf' },
       preview: {
         clienteExistente: clienteExistente ? { id: clienteExistente.id, razao: clienteExistente.razao } : null,
         coletaExistente:  coletaExistente  ? { id: coletaExistente.id,  nf: coletaExistente.nf }         : null,
         novosClientes:    clienteExistente ? 0 : 1,
-        novosProdutos,
-        totalItens: nfe.itens.length,
+        novosProdutos:    itensComStatus.filter((i) => !i.produtoExistente).length,
+        totalItens:       nfe.itens.length,
       },
     });
   } catch (e: any) {
