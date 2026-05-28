@@ -15,6 +15,7 @@ interface ItemPreview {
   uCom: string;
   vProd: number;
   pesoLiq?: number;
+  pesoBruto?: number;
   produtoExistente: { id: string; code: string; descricao: string; matchType: string } | null;
 }
 
@@ -30,6 +31,8 @@ interface PreviewPayload {
     destinatario?: { razaoSocial?: string; cidade: string; uf: string };
     vNF: number;
     pesoTotal?: number;
+    pesoLiquido?: number;
+    qVol?: number;
     itens: ItemPreview[];
   };
   preview: {
@@ -461,8 +464,16 @@ export default function ImportarNFePage() {
                 <div style={{ fontSize: 18, fontWeight: 700, color: '#1A4A1A' }}>
                   {fmtCurrency(data.nfe.vNF)}
                 </div>
-                {data.nfe.pesoTotal && (
-                  <div style={{ fontSize: 12, color: '#6b7280' }}>⚖️ {data.nfe.pesoTotal} kg</div>
+                {data.nfe.qVol !== undefined && (
+                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                    📦 {data.nfe.qVol} volume{data.nfe.qVol !== 1 ? 's' : ''}
+                  </div>
+                )}
+                {data.nfe.pesoTotal !== undefined && (
+                  <div style={{ fontSize: 12, color: '#6b7280' }}>
+                    ⚖️ Bruto: {data.nfe.pesoTotal} kg
+                    {data.nfe.pesoLiquido !== undefined && ` · Líq: ${data.nfe.pesoLiquido} kg`}
+                  </div>
                 )}
               </div>
             </div>
@@ -509,13 +520,18 @@ export default function ImportarNFePage() {
                   }}>
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <div style={{ fontWeight: 600, color: '#111827', fontSize: 14 }}>
-                        {item.qCom} × {item.xProd}
+                        {item.qCom} {item.uCom} × {item.xProd}
                       </div>
                       <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-                        Cód: {item.cProd}
-                        {item.pesoLiq ? ` · ${item.pesoLiq} kg` : ''}
-                        &nbsp;·&nbsp; {fmtCurrency(item.vProd)}
+                        Cód: {item.cProd} &nbsp;·&nbsp; {fmtCurrency(item.vProd)}
                       </div>
+                      {(item.pesoBruto !== undefined || item.pesoLiq !== undefined) && (
+                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                          {item.pesoBruto !== undefined && `⚖️ Bruto: ${item.pesoBruto} kg`}
+                          {item.pesoBruto !== undefined && item.pesoLiq !== undefined && '  ·  '}
+                          {item.pesoLiq !== undefined && `Líq: ${item.pesoLiq} kg`}
+                        </div>
+                      )}
                     </div>
                     <div>
                       {item.produtoExistente ? (

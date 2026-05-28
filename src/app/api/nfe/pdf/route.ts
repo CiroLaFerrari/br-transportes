@@ -30,14 +30,14 @@ function fmtCnpj(raw: string): string {
 
 interface ParsedItem {
   nItem: number; cProd: string; xProd: string;
-  qCom: number; uCom: string; vProd: number; pesoLiq?: number;
+  qCom: number; uCom: string; vProd: number; pesoLiq?: number; pesoBruto?: number;
 }
 
 interface ParsedNFe {
   chave: string; nNF: string; serie: string; dhEmi: string;
   emitente: { cnpj: string; razaoSocial: string; cidade: string; uf: string };
   destinatario?: { razaoSocial: string; cnpj: string; cidade: string; uf: string };
-  vNF: number; pesoTotal?: number; itens: ParsedItem[];
+  vNF: number; pesoTotal?: number; pesoLiquido?: number; qVol?: number; itens: ParsedItem[];
 }
 
 function parseDanfe(text: string): ParsedNFe {
@@ -122,11 +122,23 @@ function parseDanfe(text: string): ParsedNFe {
     if (ufLabelIdx >= 0) ufDest = lines[ufLabelIdx + 1]?.trim() ?? '';
   }
 
-  // ── 8. Peso total ─────────────────────────────────────────────────────
-  const pesoIdx   = lines.findIndex((l) => /PESO\s+BRUTO/i.test(l));
-  const pesoLine  = pesoIdx >= 0 ? lines[pesoIdx + 1] : '';
-  const pesoMatch = (pesoLine + ' ' + text).match(/(\d[\d.,]+)\s*KG/i);
-  const pesoTotal = pesoMatch ? cleanNum(pesoMatch[1]) : undefined;
+  // ── 8. Pesos e volumes ────────────────────────────────────────────────
+  // Peso Bruto
+  const pesoBrutoIdx  = lines.findIndex((l) => /PESO\s+BRUTO/i.test(l));
+  const pesoBrutoRaw  = pesoBrutoIdx >= 0 ? lines[pesoBrutoIdx + 1] : '';
+  const pesoBrutoNum  = pesoBrutoRaw.match(/([\d.,]+)/) ? cleanNum(pesoBrutoRaw.match(/([\d.,]+)/)![1]) : undefined;
+  const pesoTotal     = pesoBrutoNum ?? (text.match(/(\d[\d.,]+)\s*KG/i) ? cleanNum(text.match(/(\d[\d.,]+)\s*KG/i)![1]) : undefined);
+
+  // Peso Líquido
+  const pesoLiqIdx    = lines.findIndex((l) => /PESO\s+L[IÍ]QUIDO/i.test(l));
+  const pesoLiqRaw    = pesoLiqIdx >= 0 ? lines[pesoLiqIdx + 1] : '';
+  const pesoLiquido   = pesoLiqRaw.match(/([\d.,]+)/) ? cleanNum(pesoLiqRaw.match(/([\d.,]+)/)![1]) : undefined;
+
+  // Quantidade de volumes (seção TRANSPORTADOR)
+  const transpIdx     = lines.findIndex((l) => /TRANSPORTADOR/i.test(l));
+  const transpLines   = transpIdx >= 0 ? lines.slice(transpIdx, transpIdx + 40) : lines.slice(0, 60);
+  const qtdVolLabelI  = transpLines.findIndex((l) => /^QUANTIDADE$/i.test(l));
+  const qVol          = qtdVolLabelI >= 0 ? (parseInt(transpLines[qtdVolLabelI + 1], 10) || undefined) : undefined;
 
   // ── 9. Valor total da nota ────────────────────────────────────────────
   // pdf-parse v1: label "VALOR TOTAL DA NOTA" seguido do valor (próxima linha)
@@ -243,8 +255,25 @@ function parseDanfe(text: string): ParsedNFe {
       nItem: 1,
       cProd: prodCodesInfo[0] ?? nNF,
       xProd: longDescs[0]?.split(/\s*(?:Reservatorio|Reservatório)/i)[0]?.trim() ?? `Produto NF ${nNF}`,
-      qCom: 1, uCom: 'UN', vProd: vNF, pesoLiq: pesoTotal,
+      qCom: 1, uCom: 'UN', vProd: vNF,
+      pesoBruto: pesoTotal, pesoLiq: pesoLiquido,
     });
+  }
+
+  // ── Distribui pesos entre os itens ────────────────────────────────────
+  if (itens.length === 1) {
+    // 1 produto: peso total é o peso do produto
+    if (pesoTotal    !== undefined && !itens[0].pesoBruto) itens[0].pesoBruto = pesoTotal;
+    if (pesoLiquido  !== undefined && !itens[0].pesoLiq)   itens[0].pesoLiq   = pesoLiquido;
+  } else if (itens.length > 1 && pesoTotal !== undefined) {
+    // Múltiplos produtos: distribui proporcionalmente ao valor
+    const somaValores = itens.reduce((s, i) => s + i.vProd, 0);
+    for (const item of itens) {
+      const pct = somaValores > 0 ? item.vProd / somaValores : 1 / itens.length;
+      if (!item.pesoBruto) item.pesoBruto = Math.round(pesoTotal  * pct * 1000) / 1000;
+      if (!item.pesoLiq && pesoLiquido !== undefined)
+        item.pesoLiq = Math.round(pesoLiquido * pct * 1000) / 1000;
+    }
   }
 
   return {
@@ -253,7 +282,7 @@ function parseDanfe(text: string): ParsedNFe {
     destinatario: (razaoDest || cidadeDest)
       ? { razaoSocial: razaoDest, cnpj: cnpjDest, cidade: cidadeDest, uf: ufDest }
       : undefined,
-    vNF, pesoTotal, itens,
+    vNF, pesoTotal, pesoLiquido, qVol, itens,
   };
 }
 
