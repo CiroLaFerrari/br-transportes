@@ -8,10 +8,19 @@ import { prisma } from '@/lib/prisma';
 // ── Extração de texto via pdfjs-dist ────────────────────────────────────────
 
 async function extractText(buffer: Buffer): Promise<string> {
+  // pdfjs-dist is listed in serverExternalPackages so webpack won't bundle it.
+  // disableFontFace + no standardFontDataUrl = skip font loading (safe for text extraction)
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js') as any;
   const data = new Uint8Array(buffer);
-  const doc  = await pdfjsLib.getDocument({ data }).promise;
+  const doc  = await pdfjsLib.getDocument({
+    data,
+    disableFontFace: true,
+    // Suppress "standardFontData" warnings in serverless
+    standardFontDataUrl: '',
+    cMapUrl: '',
+    cMapPacked: false,
+  }).promise;
   const parts: string[] = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const page    = await doc.getPage(i);
