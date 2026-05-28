@@ -11,8 +11,7 @@ import { prisma } from '@/lib/prisma';
 
 async function extractText(buffer: Buffer): Promise<string> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const pdfParse: (buf: Buffer) => Promise<{ text: string }> =
-    require('pdf-parse/lib/pdf-parse.js');
+  const pdfParse: (buf: Buffer) => Promise<{ text: string }> = require('pdf-parse/lib/pdf-parse.js');
   const { text } = await pdfParse(buffer);
   return text;
 }
