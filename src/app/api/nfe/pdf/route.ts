@@ -5,29 +5,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-// ── Extração de texto via pdfjs-dist ────────────────────────────────────────
+// ── Extração de texto via pdf-parse v1 ──────────────────────────────────────
+// Usa o caminho /lib/pdf-parse.js para evitar o carregamento de arquivos
+// de teste que causam erros no Next.js App Router (serverless)
 
 async function extractText(buffer: Buffer): Promise<string> {
-  // pdfjs-dist is listed in serverExternalPackages so webpack won't bundle it.
-  // disableFontFace + no standardFontDataUrl = skip font loading (safe for text extraction)
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js') as any;
-  const data = new Uint8Array(buffer);
-  const doc  = await pdfjsLib.getDocument({
-    data,
-    disableFontFace: true,
-    // Suppress "standardFontData" warnings in serverless
-    standardFontDataUrl: '',
-    cMapUrl: '',
-    cMapPacked: false,
-  }).promise;
-  const parts: string[] = [];
-  for (let i = 1; i <= doc.numPages; i++) {
-    const page    = await doc.getPage(i);
-    const content = await page.getTextContent();
-    parts.push(content.items.map((x: any) => String(x.str ?? '')).join(' '));
-  }
-  return parts.join('\n');
+  const pdfParse: (buf: Buffer) => Promise<{ text: string }> =
+    require('pdf-parse/lib/pdf-parse.js');
+  const { text } = await pdfParse(buffer);
+  return text;
 }
 
 // ── Parser DANFE ────────────────────────────────────────────────────────────
@@ -55,14 +42,15 @@ interface ParsedNFe {
 }
 
 function parseDanfe(text: string): ParsedNFe {
-  // ── 1. Chave de acesso ────────────────────────────────────────────────
-  // Remove todos os espaços e procura sequência de 44 dígitos
-  const noSpaces = text.replace(/\s+/g, '');
-  const chaveMatch = noSpaces.match(/\d{44}/);
-  if (!chaveMatch) throw new Error('Chave de acesso não encontrada no PDF. Verifique se o arquivo é um DANFE válido.');
-  const chave = chaveMatch[0];
+  const lines = text.split('\n').map((l) => l.trim());
 
-  // Decompõe a chave DANFE: UF(2) AAMM(4) CNPJ(14) MOD(2) SERIE(3) NNF(9) TPEMIS(1) CNUMERO(8) CDV(1)
+  // ── 1. Chave de acesso (linha única com 44 dígitos) ────────────────────
+  const chave = lines.find((l) => /^\d{44}$/.test(l.replace(/\s/g, '')))?.replace(/\s/g, '')
+    ?? text.replace(/\s/g, '').match(/\d{44}/)?.[0]
+    ?? '';
+  if (!chave) throw new Error('Chave de acesso não encontrada no PDF. Verifique se o arquivo é um DANFE válido.');
+
+  // Decompõe a chave: UF(2) AAMM(4) CNPJ(14) MOD(2) SERIE(3) NNF(9) ...
   const aamm        = chave.slice(2, 6);
   const cnpjEmitRaw = chave.slice(6, 20);
   const serie       = String(parseInt(chave.slice(22, 25), 10)) || '1';
@@ -71,197 +59,193 @@ function parseDanfe(text: string): ParsedNFe {
   const mes         = aamm.slice(2, 4);
 
   // ── 2. Data de emissão ────────────────────────────────────────────────
-  const dates = [...text.matchAll(/(\d{2})\/(\d{2})\/(\d{4})/g)];
-  const emissaoDate = dates.find((m) => m[3] === ano || m[3] === String(Number(ano) + 1));
-  const dhEmi = emissaoDate
-    ? `${emissaoDate[3]}-${emissaoDate[2]}-${emissaoDate[1]}T00:00:00`
+  // pdf-parse v1 dá uma linha por campo, DATA DA EMISSÃO é seguida pela data
+  const dataEmissaoIdx = lines.findIndex((l) => /DATA\s+DA\s+EMISS[AÃ]O/i.test(l));
+  const dataLine = dataEmissaoIdx >= 0
+    ? lines.slice(dataEmissaoIdx + 1, dataEmissaoIdx + 4).find((l) => /\d{2}\/\d{2}\/\d{4}/.test(l))
+    : undefined;
+  const dateMatch = dataLine?.match(/(\d{2})\/(\d{2})\/(\d{4})/)
+    ?? text.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  const dhEmi = dateMatch
+    ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}T00:00:00`
     : `${ano}-${mes}-01T00:00:00`;
 
-  // ── 3. CNPJs no texto ─────────────────────────────────────────────────
-  const cnpjsAll  = [...text.matchAll(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g)].map((m) => m[0]);
-  const cnpjEmit  = fmtCnpj(cnpjEmitRaw);
-  const cnpjDest  = cnpjsAll.find((c) => c.replace(/\D/g, '') !== cnpjEmitRaw) ?? '';
+  // ── 3. CNPJs ──────────────────────────────────────────────────────────
+  const cnpjsAll = [...text.matchAll(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g)].map((m) => m[0]);
+  const cnpjEmit = fmtCnpj(cnpjEmitRaw);
+  const cnpjDest = cnpjsAll.find((c) => c.replace(/\D/g, '') !== cnpjEmitRaw) ?? '';
 
-  // ── 4. Razão social do emitente ───────────────────────────────────────
-  // pdfjs extrai o texto em ordem visual — o nome do emitente aparece logo após
-  // "Recebemos de X os produtos..." ou logo antes/depois do CNPJ do emitente
-  let razaoEmit = '';
-  // Padrão: "Recebemos de [NOME] os produtos"
-  const recebemosMatch = text.match(/Recebemos de\s+(.+?)\s+os produtos/i);
-  if (recebemosMatch) razaoEmit = recebemosMatch[1].trim();
-
-  // Fallback: nome depois do CNPJ emitente no texto
-  if (!razaoEmit && cnpjEmit) {
-    const idxCnpj = text.indexOf(cnpjEmit);
-    if (idxCnpj >= 0) {
-      const after = text.slice(idxCnpj + cnpjEmit.length, idxCnpj + cnpjEmit.length + 200);
-      const parts = after.trim().split(/\s{2,}|\n/).map((s) => s.trim()).filter(Boolean);
-      const candidate = parts.find(
-        (p) => p.length > 5 && !/^(\d|CNPJ|CPF|IE|IM|FONE|CEP|RUA|AV|ROD)/.test(p),
-      );
-      if (candidate) razaoEmit = candidate;
+  // ── 4. Razão social emitente ──────────────────────────────────────────
+  // "Recebemos de [NOME] os produtos" ou linha seguinte ao CNPJ emitente
+  let razaoEmit = text.match(/Recebemos de\s+(.+?)\s+os produtos/i)?.[1]?.trim() ?? '';
+  if (!razaoEmit) {
+    const cnpjIdx = lines.findIndex((l) => l.includes(cnpjEmit));
+    if (cnpjIdx >= 0) {
+      const candidate = lines.slice(cnpjIdx + 1, cnpjIdx + 4)
+        .find((l) => l.length > 5 && !/^(\d|CNPJ|CPF|IE|FONE|\()/.test(l));
+      razaoEmit = candidate ?? '';
     }
   }
   razaoEmit = razaoEmit || 'Emitente';
 
-  // ── 5. Razão social do destinatário ──────────────────────────────────
-  // Aparece após "NOME / RAZÃO SOCIAL" na seção destinatário
+  // ── 5. Razão social destinatário ──────────────────────────────────────
+  // pdf-parse v1: "NOME / RAZÃO SOCIAL" → próxima linha não-vazia é o nome
   let razaoDest = '';
-  const nomeLabelIdx = text.lastIndexOf('NOME / RAZÃO SOCIAL');
-  if (nomeLabelIdx >= 0) {
-    const after = text.slice(nomeLabelIdx + 20, nomeLabelIdx + 200);
-    const parts = after.trim().split(/\n|\s{3,}/).map((s) => s.trim()).filter(Boolean);
-    const candidate = parts.find(
-      (p) => p.length > 5 && !/^(NOME|DATA|CNPJ|CPF|CEP|UF|END|RUA|ROD|AV|BAIRRO|FONE|IE)/.test(p),
-    );
-    if (candidate) razaoDest = candidate;
+  // Há dois labels "NOME / RAZÃO SOCIAL": emitente e destinatário
+  // O segundo é o destinatário
+  const nomeLabelIdxs = lines.reduce<number[]>((acc, l, i) => {
+    if (/NOME\s*\/\s*RAZ[ÃA]O\s+SOCIAL/i.test(l)) acc.push(i);
+    return acc;
+  }, []);
+  const destNomeIdx = nomeLabelIdxs[nomeLabelIdxs.length - 1] ?? -1;
+  if (destNomeIdx >= 0) {
+    const candidate = lines.slice(destNomeIdx + 1, destNomeIdx + 5)
+      .find((l) => l.length > 5 && !/^(NOME|DATA|CNPJ|CPF|CEP|UF\b|END|FONE|IE)/.test(l));
+    razaoDest = candidate ?? '';
   }
 
-  // ── 6. Cidade/UF do emitente ──────────────────────────────────────────
-  // Padrão "Pompeia - SP" ou "CIDADE  UF  BA"
-  const cityUfRe = /([A-ZÁÇÃÕÉÀÊÎ][A-ZÁÇÃÕÉÀÊÎa-záçãõéàêî\s]{2,30})\s*-\s*([A-Z]{2})\b/g;
-  const cityUfs  = [...text.matchAll(cityUfRe)]
-    .map((m) => ({ city: m[1].trim(), uf: m[2] }))
-    .filter((c) => c.city.length > 2 && !/^\d/.test(c.city) && !/^(ROD|BR|SP\s*\d|CEP)/.test(c.city));
+  // ── 6. Cidade/UF emitente ─────────────────────────────────────────────
+  // Linha de endereço do emitente: "..., Pompeia - SP"
+  const cityUfRe = /([A-ZÁÇÃÕÉÀÊÎ][A-ZÁÇÃÕÉÀÊÎa-záçãõéàêî\s]{1,30})\s*-\s*([A-Z]{2})$/;
+  const enderecoEmitLine = lines.find((l) => cityUfRe.test(l) && !/^(ROD|BR)\s/.test(l));
+  const cityUfMatch = enderecoEmitLine?.match(cityUfRe);
+  const cidadeEmit  = cityUfMatch?.[1]?.trim() ?? '';
+  const ufEmit      = cityUfMatch?.[2] ?? chave.slice(0, 2);
 
-  const cidadeEmit = cityUfs[0]?.city ?? '';
-  const ufEmit     = cityUfs[0]?.uf  ?? chave.slice(0, 2);
-
-  // Destinatário — cidade e UF
-  // Geralmente "MUNICÍPIO  JUAZEIRO  UF  BA"
+  // ── 7. Cidade/UF destinatário ─────────────────────────────────────────
+  // pdf-parse v1: label "MUNICÍPIO" seguido da cidade, label "UF" seguido da UF
   let cidadeDest = '', ufDest = '';
-  const municipioMatch = text.match(/MUNIC[IÍ]PIO\s+([A-ZÁÇÃÕÉÀÊÎ][^\n\t]+?)\s+UF\s+([A-Z]{2})/i);
-  if (municipioMatch) {
-    cidadeDest = municipioMatch[1].trim();
-    ufDest     = municipioMatch[2].trim();
-  } else if (cityUfs[1]) {
-    cidadeDest = cityUfs[1].city;
-    ufDest     = cityUfs[1].uf;
+  const municipioIdx = lines.lastIndexOf('MUNICÍPIO');
+  if (municipioIdx >= 0) {
+    cidadeDest = lines[municipioIdx + 1] ?? '';
+    // UF vem após
+    const ufLabelIdx = lines.indexOf('UF', municipioIdx);
+    if (ufLabelIdx >= 0) ufDest = lines[ufLabelIdx + 1]?.trim() ?? '';
   }
 
-  // ── 7. Peso total ─────────────────────────────────────────────────────
-  const pesoMatch = text.match(/PESO\s+BRUTO\s+([\d.,]+)\s*KG/i);
+  // ── 8. Peso total ─────────────────────────────────────────────────────
+  const pesoIdx   = lines.findIndex((l) => /PESO\s+BRUTO/i.test(l));
+  const pesoLine  = pesoIdx >= 0 ? lines[pesoIdx + 1] : '';
+  const pesoMatch = (pesoLine + ' ' + text).match(/(\d[\d.,]+)\s*KG/i);
   const pesoTotal = pesoMatch ? cleanNum(pesoMatch[1]) : undefined;
 
-  // ── 8. Valor total da nota ────────────────────────────────────────────
+  // ── 9. Valor total da nota ────────────────────────────────────────────
+  // pdf-parse v1: label "VALOR TOTAL DA NOTA" seguido do valor (próxima linha)
   let vNF = 0;
-  const totalMatch = text.match(/VALOR\s+TOTAL\s+DA\s+NOTA\s+([\d.,]+)/i);
-  if (totalMatch) vNF = cleanNum(totalMatch[1]);
+  const vNFIdx = lines.findIndex((l) => /VALOR\s+TOTAL\s+DA\s+NOTA/i.test(l));
+  if (vNFIdx >= 0) {
+    const vLine = lines.slice(vNFIdx + 1, vNFIdx + 4).find((l) => /[\d.,]/.test(l));
+    if (vLine) vNF = cleanNum(vLine.match(/([\d.,]+)/)?.[1] ?? '0');
+  }
   if (!vNF) {
-    // Fallback: maior valor em reais no documento
     const moneys = [...text.matchAll(/R\$\s*([\d.,]+)/g)].map((m) => cleanNum(m[1]));
     if (moneys.length) vNF = Math.max(...moneys);
   }
 
-  // ── 9. Produtos ───────────────────────────────────────────────────────
-  const itens: ParsedItem[] = [];
-
-  // Estratégia principal: extrai produtos da seção "DADOS DOS PRODUTOS / SERVIÇOS"
-  // O pdfjs retorna o texto de forma contínua. Procura o bloco entre o header de
-  // produtos e INFORMAÇÕES COMPLEMENTARES / CÁLCULO DO IMPOSTO
-  const prodStart = text.search(/DADOS\s+DOS\s+PRODUTOS|COD[IÍ]GO\s+PRODUTO\s+DESCRI/i);
-  const prodEnd   = text.search(/INFORMA[ÇC][ÕO]ES\s+COMPLEMENTARES|RESERVADO\s+AO\s+FISCO|CÁLCULO\s+DO\s+IMPOSTO/i);
-
-  const prodBlock = prodStart >= 0
-    ? text.slice(prodStart, prodEnd > prodStart ? prodEnd : prodStart + 2000)
+  // ── 10. Produtos — via INFORMAÇÕES COMPLEMENTARES (mais confiável) ────
+  // Padrão: "PRODUTO:1331979 . MAQUINA NR.:xxx"
+  // Padrão descrição: "||000...1331979 - CONDOR M.12 PULVERIZADOR..."
+  const infoCompIdx = lines.findIndex((l) => /INFORMA[ÇC][ÕO]ES\s+COMPLEMENTARES/i.test(l));
+  const infoCompText = infoCompIdx >= 0
+    ? lines.slice(infoCompIdx, infoCompIdx + 30).join('\n')
     : '';
 
-  if (prodBlock) {
-    // Cada produto: [código] [descrição] [info extras] [NCM 8 dígitos] [CST 3 digs] [CFOP 4 digs] [UNID] [qtd] [v.unit] [desc] [0,00] [total] ...
-    // NCM ancora o produto: 8 dígitos consecutivos
-    const ncmRe = /\b(\d{8})\b/g;
-    let ncmMatch: RegExpExecArray | null;
-    const ncmPositions: number[] = [];
-    while ((ncmMatch = ncmRe.exec(prodBlock)) !== null) ncmPositions.push(ncmMatch.index);
+  const prodCodesInfo = [...infoCompText.matchAll(/PRODUTO\s*:\s*(\d+)/gi)].map((m) => m[1]);
 
-    for (let pi = 0; pi < ncmPositions.length; pi++) {
-      const pos     = ncmPositions[pi];
-      const nextPos = ncmPositions[pi + 1] ?? prodBlock.length;
+  // Descrição longa do produto nas inf. complementares
+  // Padrão: "||000...XXXX - NOME DO PRODUTO Detalhes..."
+  const longDescRe = /\|\|?\d+\s*-\s*([A-Z][^\n]{5,})/g;
+  const longDescs  = [...infoCompText.matchAll(longDescRe)].map((m) => m[1].trim());
 
-      // Texto antes do NCM = código + descrição
-      // Texto depois do NCM = CST CFOP UNID QTD VUNIT VDESC VTOTAL ...
-      const before = prodBlock.slice(Math.max(0, pos - 600), pos).trim();
-      const after  = prodBlock.slice(pos + 8, nextPos).trim();
+  // ── 10b. Produtos — via tabela DADOS DOS PRODUTOS ─────────────────────
+  const itens: ParsedItem[] = [];
+  const prodTableIdx = lines.findIndex((l) => /DADOS\s+DOS\s+PRODUTOS/i.test(l));
 
-      // Extrai todos os números do "after"
-      const nums   = [...after.matchAll(/([\d]+[.,][\d]+)/g)].map((m) => cleanNum(m[1]));
-      // Extrai CFOP: 4 dígitos iniciando em 1-9 logo após o NCM
-      const cfopMatch = after.match(/\b([1-9]\d{3})\b/);
-      // Extrai unidade: 2-4 letras maiúsculas
-      const unidMatch = after.match(/\b([A-Z]{2,4})\b/);
+  if (prodTableIdx >= 0) {
+    // Bloco da tabela de produtos até INFORMAÇÕES COMPLEMENTARES
+    const tableEnd = infoCompIdx > prodTableIdx ? infoCompIdx : prodTableIdx + 50;
+    const tableLines = lines.slice(prodTableIdx + 1, tableEnd);
 
-      // Quantidade: primeiro número com vírgula (ex: 1,0000)
-      const qtyMatch  = after.match(/([\d]+,[\d]+)/);
-      const qCom      = qtyMatch ? cleanNum(qtyMatch[1]) : 1;
+    // NCM ancora cada produto (8 dígitos numa linha que começa com números)
+    // Em pdf-parse v1, o bloco fica colado: "842449000206101UN1,0000"
+    // Procura por linhas que contenham 8+ dígitos consecutivos (NCM)
+    const ncmLineRe = /\b(\d{8})\d*[A-Z]+([\d,]+)/;
 
-      // Valor total: geralmente o terceiro ou quarto número de formato "NN.NNN,NN"
-      const realVals = nums.filter((n) => n > 10 && n > qCom);
-      const vProd    = realVals.length > 0 ? realVals[realVals.length - 1] : vNF;
+    let currentCode = '';
+    let currentDesc = '';
+    let nItem       = 0;
 
-      // Código e descrição do "before"
-      // Tokens do before: separar por espaços múltiplos
-      const beforeTokens = before.split(/\s{2,}|\n/).map((s) => s.trim()).filter(Boolean);
-      // Último token relevante é o código (números), anterior é a descrição
-      // Procura por código: sequência de dígitos/letras sem espaços
-      let cProd = `ITEM-${pi + 1}`;
-      let xProd = '';
+    for (let li = 0; li < tableLines.length; li++) {
+      const l = tableLines[li];
 
-      // Estratégia: último token do before que parece código
-      for (let ti = beforeTokens.length - 1; ti >= 0; ti--) {
-        const tok = beforeTokens[ti];
-        if (/^[\dA-Z\-_.\/]{3,}$/.test(tok)) {
-          cProd = tok;
-          xProd = beforeTokens.slice(0, ti).join(' ').trim() ||
-            beforeTokens.slice(ti + 1).join(' ').trim();
-          break;
-        }
+      // Linha de código (só dígitos, geralmente 14+ chars) — ex: "00000000000133"
+      if (/^\d{8,}$/.test(l)) {
+        currentCode = l;
+        continue;
       }
-      if (!xProd) xProd = beforeTokens.filter((t) => t !== cProd).join(' ').trim();
 
-      // Limpa descrição: remove textos de cabeçalho
-      xProd = xProd
-        .replace(/DADOS\s+DOS\s+PRODUTOS[^]*?ALÍQ\.\s*%/i, '')
-        .replace(/COD[IÍ]GO\s+PRODUTO\s+DESCRI[ÇC][AÃ]O[^]*?VALOR\s+TOTAL/i, '')
-        .replace(/CÓDIGO\s+PRODUTO.*/i, '')
+      // Continuação do código (parte 2) — ex: "1979"
+      if (currentCode && /^\d{1,8}$/.test(l) && currentDesc === '') {
+        currentCode += l;
+        continue;
+      }
+
+      // Linha de descrição do produto (texto com letras e espaços)
+      if (currentCode && !currentDesc && /[A-Z]{3}/.test(l) &&
+          !/^(DADOS|CÓDIGO|NCM|CST|CFOP|ICMS|IPI|PIS|COFINS|BASE|VALOR|ALÍQ|DESCRIÇÃO|PRODUTO)/.test(l)) {
+        currentDesc = l.replace(/\s{2,}/g, ' ').trim();
+        continue;
+      }
+
+      // Linha com NCM colado (ex: "842449000206101UN1,0000")
+      const ncmMatch = ncmLineRe.exec(l);
+      if (ncmMatch && currentDesc) {
+        // Extrai quantidade (primeiro número com vírgula após o NCM block)
+        const qtyMatch = l.match(/([A-Z]{2,4})([\d]+,[\d]+)/);
+        const qCom     = qtyMatch ? cleanNum(qtyMatch[2]) : 1;
+
+        nItem++;
+        itens.push({
+          nItem,
+          cProd: currentCode.replace(/^0+/, '') || `ITEM-${nItem}`,
+          xProd: currentDesc,
+          qCom:  qCom || 1,
+          uCom:  qtyMatch?.[1] ?? 'UN',
+          vProd: vNF, // será refinado abaixo
+        });
+        currentCode = '';
+        currentDesc = '';
+        continue;
+      }
+
+      // Linha de valor total do item (ex: "20.581,76" — primeira linha de valor após NCM block)
+      if (itens.length > 0 && /^\d[\d.]*,\d{2}$/.test(l) && itens[itens.length - 1].vProd === vNF) {
+        itens[itens.length - 1].vProd = cleanNum(l);
+      }
+    }
+  }
+
+  // Aplica código e descrição das informações complementares (mais limpos)
+  for (let i = 0; i < itens.length; i++) {
+    if (prodCodesInfo[i]) itens[i].cProd = prodCodesInfo[i];
+    if (longDescs[i]) {
+      // Pega até a primeira vírgula ou "Reservatorio" (onde começam os detalhes)
+      const cleanDesc = longDescs[i]
+        .replace(/\s{2,}/g, ' ')
+        .split(/\s*(?:Reservatorio|Reservatório|,\s*\d)/i)[0]
         .trim();
-
-      if (!xProd || xProd.length < 3) xProd = `Produto ${pi + 1}`;
-
-      itens.push({
-        nItem: pi + 1, cProd, xProd,
-        qCom: qCom || 1,
-        uCom: unidMatch?.[1] ?? 'UN',
-        vProd: vProd || vNF,
-      });
+      if (cleanDesc.length >= itens[i].xProd.length) itens[i].xProd = cleanDesc;
     }
   }
 
-  // ── 9b. Enriquece com dados de INFORMAÇÕES COMPLEMENTARES ─────────────
-  // Padrão: "PRODUTO:1331979 . MAQUINA NR.:xxx"
-  const infoComp = text.match(/INFORMA[ÇC][ÕO]ES\s+COMPLEMENTARES\s+([\s\S]{0,2000})/i)?.[1] ?? '';
-  const prodCodesInfo = [...infoComp.matchAll(/PRODUTO\s*:\s*(\d+)/gi)].map((m) => m[1]);
-
-  if (itens.length === 0 && prodCodesInfo.length === 0) {
-    // Último fallback: cria 1 item com o que temos
+  // Fallback se não encontrou produtos pela tabela
+  if (itens.length === 0) {
     itens.push({
-      nItem: 1, cProd: nNF, xProd: `Produto NF ${nNF}`, qCom: 1, uCom: 'UN', vProd: vNF, pesoLiq: pesoTotal,
+      nItem: 1,
+      cProd: prodCodesInfo[0] ?? nNF,
+      xProd: longDescs[0]?.split(/\s*(?:Reservatorio|Reservatório)/i)[0]?.trim() ?? `Produto NF ${nNF}`,
+      qCom: 1, uCom: 'UN', vProd: vNF, pesoLiq: pesoTotal,
     });
-  }
-
-  // Aplica os códigos reais das informações complementares
-  for (let i = 0; i < itens.length && i < prodCodesInfo.length; i++) {
-    itens[i].cProd = prodCodesInfo[i];
-  }
-
-  // Também tenta melhorar a descrição pelo bloco após o código nas inf. complementares
-  const descRe = /\|\|?\d+\s*-\s*([^\n|]{10,200})/g;
-  const descMatches = [...infoComp.matchAll(descRe)];
-  for (let i = 0; i < itens.length && i < descMatches.length; i++) {
-    const fullDesc = descMatches[i][1].trim();
-    if (fullDesc.length > itens[i].xProd.length) {
-      // Mantém a primeira parte (nome do produto) como descrição
-      itens[i].xProd = fullDesc.slice(0, fullDesc.indexOf('Reservatorio') > 0 ? fullDesc.indexOf('Reservatorio') : 120).trim();
-    }
   }
 
   return {
