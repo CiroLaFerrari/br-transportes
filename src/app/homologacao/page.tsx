@@ -148,6 +148,34 @@ const ITEMS: Item[] = [
     status: 'done',
     tag: 'Minutas',
   },
+  {
+    id: 20,
+    title: 'Importação de NF-e via PDF (DANFE)',
+    desc: 'Nova aba "Upload PDF" na tela de NF-e: arraste ou selecione o DANFE em PDF. O sistema extrai emitente, CNPJ, destinatário, chave de acesso, produtos, pesos e valor total diretamente do arquivo — sem API paga, sem e-CNPJ. Aba "Chave de acesso" mantida para consulta futura com provedor externo.',
+    status: 'done',
+    tag: 'NF-e',
+  },
+  {
+    id: 21,
+    title: 'Entregas — Filtro "Todos os status" como padrão',
+    desc: 'Tela de Entregas agora abre com "Todos os status" por padrão, exibindo coletas em qualquer fase (Pátio, Em Carga, Carregada, Em Trânsito, Entregue). Antes travava em EM_PATIO, ocultando tudo que já foi entregue.',
+    status: 'done',
+    tag: 'Entregas',
+  },
+  {
+    id: 22,
+    title: 'Planejamento — Descrição dos produtos nas paradas',
+    desc: 'Tabela de paradas no planejamento exibe coluna "Produtos" com a descrição de cada item vinculado à coleta (ex: CONDOR M.12 PULVERIZADOR | RESERVATÓRIO 600L), facilitando a conferência sem abrir cada NF.',
+    status: 'done',
+    tag: 'Planejamento',
+  },
+  {
+    id: 23,
+    title: 'Checklist Carregamento — Excel XLSX real',
+    desc: 'Botão "Baixar Excel" no Checklist de Carregamento agora gera um .xlsx real via ExcelJS (cabeçalho verde, zebra, auto-filtro, linha congelada). Antes gerava HTML disfarçado de .xls que o Excel 2016+ recusava abrir.',
+    status: 'done',
+    tag: 'Carregamento',
+  },
 ];
 
 const TAG_COLORS: Record<string, string> = {
@@ -165,6 +193,7 @@ const TAG_COLORS: Record<string, string> = {
   Motoristas: '#c026d3',
   Operação: '#0284c7',
   Minutas: '#b45309',
+  'NF-e': '#0f766e',
 };
 
 const STATUS_CONFIG: Record<StatusType, { label: string; bg: string; color: string; icon: string }> = {
