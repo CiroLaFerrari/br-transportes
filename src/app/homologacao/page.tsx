@@ -2,6 +2,7 @@
 
 // ─────────────────────────────────────────────────────────────────────────────
 // /homologacao — Painel de acompanhamento das modificações solicitadas
+// Identidade visual BR Transportes (verde #1A4A1A, dourado #F5BE16, branco)
 // ─────────────────────────────────────────────────────────────────────────────
 
 type StatusType = 'done' | 'progress' | 'pending';
@@ -179,158 +180,175 @@ const ITEMS: Item[] = [
 ];
 
 const TAG_COLORS: Record<string, string> = {
-  Veículos: '#0891b2',
-  Relatórios: '#7c3aed',
-  Coletas: '#d97706',
-  Mapas: '#0d9488',
+  Veículos:     '#0891b2',
+  Relatórios:   '#7c3aed',
+  Coletas:      '#d97706',
+  Mapas:        '#0d9488',
   Planejamento: '#2563eb',
-  Carga: '#ea580c',
+  Carga:        '#ea580c',
   Carregamento: '#059669',
-  Exportação: '#6366f1',
-  Status: '#94a3b8',
-  Entregas: '#db2777',
-  Produtos: '#65a30d',
-  Motoristas: '#c026d3',
-  Operação: '#0284c7',
-  Minutas: '#b45309',
-  'NF-e': '#0f766e',
+  Exportação:   '#6366f1',
+  Status:       '#64748b',
+  Entregas:     '#db2777',
+  Produtos:     '#65a30d',
+  Motoristas:   '#c026d3',
+  Operação:     '#0284c7',
+  Minutas:      '#b45309',
+  'NF-e':       '#0f766e',
 };
 
-const STATUS_CONFIG: Record<StatusType, { label: string; bg: string; color: string; icon: string }> = {
-  done:     { label: 'Concluído',   bg: '#14532d', color: '#4ade80', icon: '✓' },
-  progress: { label: 'Em progresso', bg: '#1e3a5f', color: '#60a5fa', icon: '◐' },
-  pending:  { label: 'Pendente',    bg: '#1c1c1c', color: '#71717a', icon: '○' },
+const STATUS_CONFIG: Record<StatusType, { label: string; bg: string; color: string; border: string; icon: string }> = {
+  done:     { label: 'Concluído',    bg: '#dcfce7', color: '#15803d', border: '#86efac', icon: '✓' },
+  progress: { label: 'Em progresso', bg: '#dbeafe', color: '#1d4ed8', border: '#93c5fd', icon: '◐' },
+  pending:  { label: 'Pendente',     bg: '#f1f5f9', color: '#64748b', border: '#cbd5e1', icon: '○' },
 };
 
 function statusCounts() {
-  const done = ITEMS.filter((i) => i.status === 'done').length;
+  const done     = ITEMS.filter((i) => i.status === 'done').length;
   const progress = ITEMS.filter((i) => i.status === 'progress').length;
-  const pending = ITEMS.filter((i) => i.status === 'pending').length;
+  const pending  = ITEMS.filter((i) => i.status === 'pending').length;
   return { done, progress, pending, total: ITEMS.length };
 }
 
 export default function HomologacaoPage() {
   const counts = statusCounts();
-  const pct = Math.round((counts.done / counts.total) * 100);
+  const pct    = Math.round((counts.done / counts.total) * 100);
+
+  const GREEN  = '#1A4A1A';
+  const GOLD   = '#F5BE16';
+  const LIGHT  = '#f0fdf4';
+  const BORDER = '#d1fae5';
 
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#0a0a0a',
-      color: '#f1f5f9',
+      background: '#f8fafc',
+      color: '#1e293b',
       fontFamily: 'ui-sans-serif, system-ui, sans-serif',
       padding: '32px 24px',
     }}>
-      <div style={{ maxWidth: 920, margin: '0 auto' }}>
+      <div style={{ maxWidth: 960, margin: '0 auto' }}>
 
         {/* Header */}
-        <div style={{ marginBottom: 32 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
             <div style={{
-              width: 10, height: 10, borderRadius: '50%',
-              background: '#22c55e', boxShadow: '0 0 8px #22c55e',
-            }} />
-            <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px' }}>
-              BR Transportes · Sistema de Gestão
-            </span>
+              width: 38, height: 38, borderRadius: 10,
+              background: GREEN, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontWeight: 900, fontSize: 14, color: GOLD, flexShrink: 0,
+            }}>
+              BR
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                BR Transportes · Sistema de Gestão
+              </div>
+              <h1 style={{ fontSize: 24, fontWeight: 900, margin: 0, color: GREEN, letterSpacing: '-0.3px' }}>
+                Homologação V2 — Modificações
+              </h1>
+            </div>
           </div>
-          <h1 style={{ fontSize: 26, fontWeight: 900, margin: 0, color: '#f8fafc', letterSpacing: '-0.5px' }}>
-            Homologação V2 — Modificações
-          </h1>
-          <p style={{ fontSize: 13, color: '#64748b', marginTop: 6 }}>
+          <p style={{ fontSize: 13, color: '#64748b', margin: 0, paddingLeft: 48 }}>
             Acompanhamento das melhorias solicitadas durante a homologação do sistema.
           </p>
         </div>
 
-        {/* Progress summary */}
+        {/* Stat cards */}
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
           gap: 12,
-          marginBottom: 28,
+          marginBottom: 20,
         }}>
-          <StatCard value={String(counts.done)} label="Concluídos" color="#22c55e" />
-          <StatCard value={String(counts.progress)} label="Em progresso" color="#60a5fa" />
-          <StatCard value={String(counts.pending)} label="Pendentes" color="#71717a" />
-          <StatCard value={`${pct}%`} label="Progresso geral" color="#F5BE16" />
+          <StatCard value={String(counts.done)}     label="Concluídos"    color={GREEN} bg={LIGHT}   border={BORDER} />
+          <StatCard value={String(counts.progress)} label="Em progresso"  color="#1d4ed8" bg="#eff6ff" border="#bfdbfe" />
+          <StatCard value={String(counts.pending)}  label="Pendentes"     color="#64748b" bg="#f8fafc" border="#e2e8f0" />
+          <StatCard value={`${pct}%`}               label="Progresso"     color={GOLD}   bg={GREEN}   border={GREEN} textWhite />
         </div>
 
-        {/* Progress bar */}
-        <div style={{
-          height: 6, borderRadius: 999, background: '#1e1e1e',
-          marginBottom: 28, overflow: 'hidden',
-        }}>
+        {/* Barra de progresso */}
+        <div style={{ height: 8, borderRadius: 999, background: '#e2e8f0', marginBottom: 24, overflow: 'hidden' }}>
           <div style={{
             height: '100%', width: `${pct}%`,
-            background: 'linear-gradient(90deg, #1A4A1A, #22c55e)',
+            background: `linear-gradient(90deg, ${GREEN}, #2d7a2d)`,
             borderRadius: 999,
             transition: 'width 0.6s ease',
-          }} />
+            position: 'relative',
+          }}>
+            <div style={{
+              position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)',
+              width: 16, height: 16, borderRadius: '50%',
+              background: GOLD, border: `2px solid ${GREEN}`,
+              boxShadow: `0 0 6px ${GOLD}`,
+            }} />
+          </div>
         </div>
 
-        {/* Table */}
+        {/* Tabela */}
         <div style={{
-          border: '1px solid #1e1e1e',
-          borderRadius: 12,
+          border: `1px solid ${BORDER}`,
+          borderRadius: 14,
           overflow: 'hidden',
-          background: '#111111',
+          background: '#ffffff',
+          boxShadow: '0 1px 4px rgba(26,74,26,0.07)',
         }}>
-          {/* Table header */}
+          {/* Cabeçalho da tabela */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: '48px 1fr 130px',
+            gridTemplateColumns: '52px 1fr 130px',
             padding: '10px 20px',
-            borderBottom: '1px solid #1e1e1e',
-            background: '#161616',
+            borderBottom: `2px solid ${GOLD}`,
+            background: GREEN,
           }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.8px' }}>#</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Modificação</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.8px', textAlign: 'right' }}>Status</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(245,190,22,0.8)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>#</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(245,190,22,0.8)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Modificação</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(245,190,22,0.8)', textTransform: 'uppercase', letterSpacing: '0.8px', textAlign: 'right' }}>Status</span>
           </div>
 
-          {/* Rows */}
+          {/* Linhas */}
           {ITEMS.map((item, idx) => {
-            const sc = STATUS_CONFIG[item.status];
+            const sc       = STATUS_CONFIG[item.status];
             const tagColor = TAG_COLORS[item.tag || ''] || '#64748b';
-            const isLast = idx === ITEMS.length - 1;
+            const isLast   = idx === ITEMS.length - 1;
+            const isEven   = idx % 2 === 0;
+
             return (
               <div
                 key={item.id}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '48px 1fr 130px',
-                  padding: '14px 20px',
-                  borderBottom: isLast ? 'none' : '1px solid #1a1a1a',
+                  gridTemplateColumns: '52px 1fr 130px',
+                  padding: '13px 20px',
+                  borderBottom: isLast ? 'none' : `1px solid ${BORDER}`,
                   alignItems: 'start',
                   gap: 8,
-                  background: item.status === 'done' ? '#0d1a0d' : item.status === 'progress' ? '#0d1220' : 'transparent',
-                  transition: 'background 0.15s',
+                  background: isEven ? '#ffffff' : LIGHT,
                 }}
               >
-                {/* Number */}
+                {/* Número */}
                 <div style={{
-                  fontSize: 13, fontWeight: 800,
-                  color: item.status === 'done' ? '#22c55e33' : '#27272a',
+                  fontSize: 13, fontWeight: 900,
+                  color: item.status === 'done' ? '#86efac' : '#cbd5e1',
                   paddingTop: 2,
                 }}>
                   {String(item.id).padStart(2, '0')}
                 </div>
 
-                {/* Content */}
+                {/* Conteúdo */}
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
                     <span style={{
                       fontSize: 14, fontWeight: 700,
-                      color: item.status === 'done' ? '#e2e8f0' : item.status === 'progress' ? '#bfdbfe' : '#94a3b8',
+                      color: item.status === 'done' ? GREEN : item.status === 'progress' ? '#1d4ed8' : '#64748b',
                     }}>
                       {item.title}
                     </span>
                     {item.tag && (
                       <span style={{
                         fontSize: 10, fontWeight: 700,
-                        padding: '1px 7px',
+                        padding: '2px 8px',
                         borderRadius: 999,
-                        background: tagColor + '22',
+                        background: tagColor + '18',
                         color: tagColor,
                         border: `1px solid ${tagColor}44`,
                         textTransform: 'uppercase',
@@ -345,7 +363,7 @@ export default function HomologacaoPage() {
                   </div>
                 </div>
 
-                {/* Status badge */}
+                {/* Badge de status */}
                 <div style={{ textAlign: 'right', paddingTop: 2 }}>
                   <span style={{
                     display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -354,10 +372,10 @@ export default function HomologacaoPage() {
                     borderRadius: 999,
                     background: sc.bg,
                     color: sc.color,
-                    border: `1px solid ${sc.color}44`,
+                    border: `1px solid ${sc.border}`,
                     whiteSpace: 'nowrap',
                   }}>
-                    <span style={{ fontSize: 14, lineHeight: 1 }}>{sc.icon}</span>
+                    <span style={{ fontSize: 13, lineHeight: 1 }}>{sc.icon}</span>
                     {sc.label}
                   </span>
                 </div>
@@ -366,10 +384,24 @@ export default function HomologacaoPage() {
           })}
         </div>
 
-        {/* Footer */}
-        <div style={{ marginTop: 24, fontSize: 11, color: '#334155', textAlign: 'center' }}>
-          BR Transportes e Logística · Homologação iniciada em 28/03/2026
+        {/* Rodapé */}
+        <div style={{
+          marginTop: 20,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          flexWrap: 'wrap', gap: 8,
+        }}>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>
+            BR Transportes e Logística · Homologação iniciada em 28/03/2026
+          </span>
+          <span style={{
+            fontSize: 12, fontWeight: 700,
+            padding: '4px 12px', borderRadius: 999,
+            background: LIGHT, color: GREEN, border: `1px solid ${BORDER}`,
+          }}>
+            {counts.done}/{counts.total} concluídos · {pct}%
+          </span>
         </div>
+
       </div>
     </div>
   );
@@ -377,17 +409,25 @@ export default function HomologacaoPage() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function StatCard({ value, label, color }: { value: string; label: string; color: string }) {
+function StatCard({
+  value, label, color, bg, border, textWhite,
+}: {
+  value: string; label: string; color: string; bg: string; border: string; textWhite?: boolean;
+}) {
   return (
     <div style={{
-      background: '#111111',
-      border: '1px solid #1e1e1e',
+      background: bg,
+      border: `1px solid ${border}`,
       borderRadius: 10,
       padding: '14px 16px',
-      borderLeft: `3px solid ${color}`,
+      borderLeft: `4px solid ${color}`,
     }}>
-      <div style={{ fontSize: 24, fontWeight: 900, color, lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+      <div style={{ fontSize: 26, fontWeight: 900, color, lineHeight: 1 }}>{value}</div>
+      <div style={{
+        fontSize: 11, marginTop: 4, fontWeight: 600,
+        textTransform: 'uppercase', letterSpacing: '0.5px',
+        color: textWhite ? 'rgba(255,255,255,0.8)' : '#64748b',
+      }}>
         {label}
       </div>
     </div>

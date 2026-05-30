@@ -12,11 +12,9 @@ const navLinks = [
   { href: '/rotas', label: 'Rotas' },
   { href: '/entregas', label: 'Entregas' },
   { href: '/operacao', label: 'Operacao' },
-  { href: '/scan', label: 'Scan' },
-  { href: '/etiquetas', label: 'Etiquetas' },
   { href: '/relatorios', label: 'Relatorios' },
-  { href: '/homologacao', label: '📋 Homologação' },
-  { href: '/nfe', label: '📄 Importar NF-e' },
+  { href: '/homologacao', label: 'Homologação' },
+  { href: '/nfe', label: 'Importar NF-e' },
 ];
 
 const cadLinks = [
