@@ -33,6 +33,12 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
             valorFrete: true,
             pesoTotalKg: true,
             Cliente: { select: { id: true, razao: true, percentualFrete: true } },
+            itens: {
+              select: {
+                quantidade: true,
+                Produto: { select: { code: true, descricao: true } },
+              },
+            },
           },
         },
       },

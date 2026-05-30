@@ -61,6 +61,7 @@ type ParadaRow = {
     valorFrete: number | null;
     pesoTotalKg: number | null;
     Cliente?: { id: string; razao: string; percentualFrete?: number | null } | null;
+    itens?: { quantidade: number; Produto?: { code: string; descricao: string } | null }[] | null;
   } | null;
 };
 
@@ -2286,6 +2287,7 @@ export default function PlanejamentoPage() {
                   <th style={th}>#</th>
                   <th style={th}>Label</th>
                   <th style={th}>NF</th>
+                  <th style={{ ...th, maxWidth: 260 }}>Produtos</th>
                   <th style={th}>Peso</th>
                   <th style={th}>Frete (R$)</th>
                   <th style={th}>Cliente</th>
@@ -2305,6 +2307,11 @@ export default function PlanejamentoPage() {
                     <td style={{ ...td, width: 40 }}>{idx + 1}</td>
                     <td style={td}>{p.label}</td>
                     <td style={td}>{coleta?.nf ?? '-'}</td>
+                    <td style={{ ...td, fontSize: 11, color: '#475569', maxWidth: 260 }}>
+                      {coleta?.itens && coleta.itens.length > 0
+                        ? coleta.itens.map((it) => it.Produto?.descricao ?? it.Produto?.code ?? '').filter(Boolean).join(' | ')
+                        : <span style={{ color: '#94a3b8' }}>—</span>}
+                    </td>
                     <td style={tdNum}>{pesoKg != null ? Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(pesoKg) + ' kg' : '-'}</td>
                     <td style={tdNum}>{valorFrete != null ? Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorFrete) : '-'}</td>
                     <td style={td}>{coleta?.Cliente?.razao ?? '-'}</td>
@@ -2326,7 +2333,7 @@ export default function PlanejamentoPage() {
                 })}
                 {paradas.length === 0 && (
                   <tr>
-                    <td style={td} colSpan={10}>
+                    <td style={td} colSpan={11}>
                       (Sem paradas vinculadas ainda)
                     </td>
                   </tr>

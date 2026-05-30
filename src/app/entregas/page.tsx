@@ -13,7 +13,7 @@ type Checkin = {
   motorista: { id: string; nome: string };
 };
 
-type ColetaStatus = 'EM_PATIO' | 'EM_CARGA' | 'CARREGADA' | 'EM_TRANSITO' | 'ENTREGUE';
+type ColetaStatus = '' | 'EM_PATIO' | 'EM_CARGA' | 'CARREGADA' | 'EM_TRANSITO' | 'ENTREGUE';
 
 type ColetaRow = {
   id: string;
@@ -50,7 +50,7 @@ function diffDays(fromIso?: string | null, toIso?: string | null) {
 
 export default function EntregasPage() {
   const [q, setQ] = useState('');
-  const [status, setStatus] = useState<ColetaStatus>('EM_PATIO');
+  const [status, setStatus] = useState<ColetaStatus>('');
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -323,11 +323,12 @@ export default function EntregasPage() {
       <div style={card}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <select value={status} onChange={(e) => setStatus(e.target.value as any)} style={select as any}>
-            <option value="EM_PATIO">EM_PATIO</option>
-            <option value="EM_CARGA">EM_CARGA</option>
-            <option value="CARREGADA">CARREGADA</option>
-            <option value="EM_TRANSITO">EM_TRANSITO</option>
-            <option value="ENTREGUE">ENTREGUE</option>
+            <option value="">Todos os status</option>
+            <option value="EM_PATIO">No Pátio</option>
+            <option value="EM_CARGA">Em Carga</option>
+            <option value="CARREGADA">Carregada</option>
+            <option value="EM_TRANSITO">Em Trânsito</option>
+            <option value="ENTREGUE">Entregue ✓</option>
           </select>
 
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por NF, cidade, cliente" style={input} />

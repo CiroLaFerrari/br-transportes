@@ -309,7 +309,7 @@ export default function CarregamentoChecklistPage() {
   }
 
   function baixarExcel() {
-    window.open(`/api/minutas/${encodeURIComponent(minutaId)}/etiquetas?format=xls`, '_blank');
+    window.open(`/api/minutas/${encodeURIComponent(minutaId)}/etiquetas?format=xlsx`, '_blank');
   }
 
   const [scanInput, setScanInput] = useState('');

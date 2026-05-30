@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMinutaDelegate } from '@/lib/prisma-delegates';
 import { buildXls, xlsResponse } from '@/lib/xls';
+import ExcelJS from 'exceljs';
 
 type RouteContext = {
   params: Promise<{ id: string }>; // Next 15
@@ -247,39 +248,98 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
       }
     }
 
-    if (format === 'csv' || format === 'xls' || format === 'excel') {
-      const headerCols = [
-        'Minuta ID', 'Nº Minuta', 'NF', 'Cliente', 'Cidade', 'UF',
-        'Etiqueta', 'Tipo', 'Código', 'Descrição',
-        'Peso (kg)', 'Altura (cm)', 'Largura (cm)', 'Comprimento (cm)', 'Área (m²)', 'Volume (m³)',
+    if (format === 'csv' || format === 'xls' || format === 'xlsx' || format === 'excel') {
+      // ── XLSX real via ExcelJS ──────────────────────────────────────────────
+      const GREEN  = 'FF1A4A1A';
+      const GOLD   = 'FFF5BE16';
+      const WHITE  = 'FFFFFFFF';
+      const LGREY  = 'FFF0FDF4';
+
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'BR Transportes';
+      const ws = wb.addWorksheet('Etiquetas');
+
+      // Cabeçalho da empresa
+      ws.mergeCells('A1:P1');
+      const titleCell = ws.getCell('A1');
+      titleCell.value = 'BR Transportes e Logística';
+      titleCell.font = { bold: true, size: 14, color: { argb: WHITE } };
+      titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GREEN } };
+      titleCell.alignment = { vertical: 'middle', horizontal: 'left' };
+      ws.getRow(1).height = 28;
+
+      ws.mergeCells('A2:P2');
+      const subCell = ws.getCell('A2');
+      subCell.value = `Etiquetas — NF ${header.nfNumero || minutaId}`;
+      subCell.font = { bold: true, size: 12, color: { argb: 'FF1A4A1A' } };
+      subCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GOLD } };
+      subCell.alignment = { vertical: 'middle', horizontal: 'left' };
+      ws.getRow(2).height = 22;
+
+      // Colunas
+      const cols = [
+        { header: 'Etiqueta',      key: 'etiqueta',       width: 20 },
+        { header: 'Tipo',          key: 'tipo',           width: 12 },
+        { header: 'Código',        key: 'codigo',         width: 18 },
+        { header: 'Descrição',     key: 'descricao',      width: 32 },
+        { header: 'Peso (kg)',     key: 'pesoKg',         width: 12 },
+        { header: 'Alt (cm)',      key: 'alturaCm',       width: 10 },
+        { header: 'Larg (cm)',     key: 'larguraCm',      width: 10 },
+        { header: 'Comp (cm)',     key: 'comprimentoCm',  width: 10 },
+        { header: 'Área (m²)',     key: 'areaM2',         width: 12 },
+        { header: 'Volume (m³)',   key: 'volumeM3',       width: 12 },
+        { header: 'NF',            key: 'nf',             width: 14 },
+        { header: 'Cliente',       key: 'cliente',        width: 28 },
+        { header: 'Cidade',        key: 'cidade',         width: 18 },
+        { header: 'UF',            key: 'uf',             width: 6  },
+        { header: 'Nº Minuta',     key: 'minutaNum',      width: 14 },
+        { header: 'Minuta ID',     key: 'minutaId',       width: 28 },
       ];
+      ws.columns = cols;
 
-      const dataRows = volumesFlat.map((v) => [
-        minutaId,
-        header.minutaNumero ?? '',
-        header.nfNumero ?? '',
-        header.cliente ?? '',
-        header.cidade ?? '',
-        header.uf ?? '',
-        v.etiqueta,
-        v.tipo,
-        v.codigo,
-        v.descricao,
-        v.pesoKg ?? '',
-        v.alturaCm ?? '',
-        v.larguraCm ?? '',
-        v.comprimentoCm ?? '',
-        v.areaM2 ?? '',
-        v.volumeM3 ?? '',
-      ]);
+      // Linha de cabeçalho (row 3)
+      const headerRow = ws.getRow(3);
+      headerRow.values = cols.map((c) => c.header);
+      headerRow.eachCell((cell) => {
+        cell.font  = { bold: true, color: { argb: WHITE }, size: 10 };
+        cell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: GREEN } };
+        cell.alignment = { vertical: 'middle', horizontal: 'left' };
+        cell.border = { bottom: { style: 'medium', color: { argb: GOLD } } };
+      });
+      headerRow.height = 20;
 
-      const xls = buildXls(
-        `Etiquetas — NF ${header.nfNumero || minutaId}`,
-        headerCols,
-        dataRows,
-      );
-      const res = xlsResponse(xls, `etiquetas-${header.nfNumero || minutaId}.xls`);
-      res.headers.set('X-Minuta-Delegate', String(key || ''));
+      // Dados (row 4+)
+      volumesFlat.forEach((v, i) => {
+        const row = ws.addRow([
+          v.etiqueta, v.tipo, v.codigo, v.descricao,
+          v.pesoKg ?? '', v.alturaCm ?? '', v.larguraCm ?? '', v.comprimentoCm ?? '',
+          v.areaM2 ?? '', v.volumeM3 ?? '',
+          header.nfNumero ?? '', header.cliente ?? '', header.cidade ?? '', header.uf ?? '',
+          header.minutaNumero ?? '', minutaId,
+        ]);
+        const bg = i % 2 === 0 ? WHITE : LGREY.replace('FF', '');
+        row.eachCell((cell) => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: i % 2 === 0 ? WHITE : 'FFF0FDF4' } };
+          cell.font = { size: 10 };
+          cell.border = { bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
+        });
+        row.getCell(1).font = { bold: true, size: 10 }; // etiqueta em negrito
+      });
+
+      ws.autoFilter = { from: 'A3', to: `P3` };
+      ws.views = [{ state: 'frozen', ySplit: 3 }];
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const filename = `checklist-${header.nfNumero || minutaId}.xlsx`;
+      const res = new NextResponse(Buffer.from(buffer), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Cache-Control': 'no-store',
+          'X-Minuta-Delegate': String(key || ''),
+        },
+      });
       return res;
     }
 
